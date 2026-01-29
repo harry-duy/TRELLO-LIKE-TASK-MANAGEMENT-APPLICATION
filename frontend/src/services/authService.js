@@ -1,16 +1,16 @@
 import apiClient from '@config/api';
 
 const authService = {
-  // Register new user
+  // Register new user (API returns { success, data: { user, accessToken } })
   register: async (userData) => {
     const response = await apiClient.post('/auth/register', userData);
-    return response.data;
+    return response?.data ?? response;
   },
 
-  // Login user
+  // Login user (API returns { success, data: { user, accessToken } })
   login: async (credentials) => {
     const response = await apiClient.post('/auth/login', credentials);
-    return response.data;
+    return response?.data ?? response;
   },
 
   // Logout user
@@ -19,10 +19,10 @@ const authService = {
     return response;
   },
 
-  // Get current user
+  // Get current user (API returns { success, data: user })
   getMe: async () => {
     const response = await apiClient.get('/auth/me');
-    return response.data;
+    return response?.data ?? response;
   },
 
   // Update profile

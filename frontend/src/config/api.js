@@ -3,7 +3,7 @@ import { useAuthStore } from '@store/authStore';
 
 // Create axios instance
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5001/api',
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json',

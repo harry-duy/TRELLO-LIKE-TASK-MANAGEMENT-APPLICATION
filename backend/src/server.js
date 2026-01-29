@@ -40,6 +40,7 @@ const io = new Server(server, {
 // Make io accessible to routes
 app.set('io', io);
 initializeSocket(io);
+console.log('[DEBUG] Socket initialized; continuing server setup...');
 
 // Security Middleware
 app.use(helmet());
@@ -94,14 +95,47 @@ app.use('*', (req, res) => {
 // Error Handler Middleware
 app.use(errorHandler);
 
-// Start the server
+// Start the server - thử lần lượt port 5001..5010 nếu bị EADDRINUSE
+const PORT_MIN = 5001;
+const PORT_MAX = 5010;
+
 const startServer = async () => {
-  await connectDB();
-  const PORT = process.env.PORT || 5000;
-  server.listen(PORT, () => {
-    logger.info(`🚀 Server is running on port ${PORT}`);
-    logger.info(`📝 Environment: ${process.env.NODE_ENV}`);
-  });
+  try {
+    console.log('[DEBUG] Attempting MongoDB connection...');
+    await connectDB();
+    console.log('[DEBUG] MongoDB connection successful.');
+    let port = parseInt(process.env.PORT, 10) || PORT_MIN;
+    if (port === 5000 && process.env.NODE_ENV !== 'production') port = PORT_MIN;
+    if (port < PORT_MIN || port > PORT_MAX) port = PORT_MIN;
+
+    function tryListen(p) {
+      if (p > PORT_MAX) {
+        console.error(`❌ Không có port trống trong khoảng ${PORT_MIN}-${PORT_MAX}. Tắt process đang dùng port hoặc đổi PORT trong backend/.env`);
+        process.exit(1);
+        return;
+      }
+      server.once('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+          console.log(`[DEBUG] Port ${p} đang dùng, thử port ${p + 1}...`);
+          tryListen(p + 1);
+        } else {
+          console.error('Server error:', err);
+          process.exit(1);
+        }
+      });
+      server.listen(p, () => {
+        logger.info(`🚀 Server is running on port ${p}`);
+        logger.info(`📝 Environment: ${process.env.NODE_ENV}`);
+        if (p !== PORT_MIN) {
+          console.log(`💡 Nếu frontend không gọi được API: trong frontend/.env đặt VITE_API_URL=http://localhost:${p}/api và VITE_SOCKET_URL=http://localhost:${p}`);
+        }
+      });
+    }
+    tryListen(port);
+  } catch (err) {
+    console.error('Failed to start server due to startup error:', err);
+    process.exit(1);
+  }
 };
 
 startServer();

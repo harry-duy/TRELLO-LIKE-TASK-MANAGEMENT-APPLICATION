@@ -42,34 +42,38 @@ trello-clone/
 ### 1. Clone Repository
 ```bash
 git clone <your-repo-url>
-cd trello-clone
+cd TRELLO-LIKE-TASK-MANAGEMENT-APPLICATION
 ```
 
-### 2. Setup Backend
+### 2. Cài đặt (một lần)
 ```bash
-cd backend
 npm install
-cp .env.example .env
-# Edit .env with your credentials
-npm run dev
+npm run install:all
 ```
 
-### 3. Setup Frontend
+### 3. Cấu hình môi trường
+- **Backend:** copy `backend/.env.example` → `backend/.env`, chỉnh MongoDB, JWT, Cloudinary (nếu cần).
+- **Frontend:** copy `frontend/.env.example` → `frontend/.env`, giữ `VITE_API_URL=http://localhost:5001/api` nếu chạy local.
+
+### 4. Chạy project (từ thư mục gốc)
 ```bash
-cd frontend
-npm install
-cp .env.example .env
-# Edit .env with backend URL
 npm run dev
+```
+Sẽ chạy đồng thời Backend (port 5001) và Frontend (port 5173).
+
+Chạy riêng từng phần:
+```bash
+npm run dev:backend   # Chỉ backend
+npm run dev:frontend  # Chỉ frontend
 ```
 
 ## 📚 Documentation
 
+- [**Hướng dẫn làm việc nhóm (3 người)**](./docs/TEAM.md)
 - [Backend Setup Guide](./backend/README.md)
 - [Frontend Setup Guide](./frontend/README.md)
-- [API Documentation](./docs/API.md)
-- [Database Schema](./docs/DATABASE.md)
 - [Development Guide](./docs/DEVELOPMENT.md)
+- [Project Summary](./docs/PROJECT-SUMMARY.md)
 
 ## 🎯 Features Checklist
 
@@ -150,7 +154,7 @@ npm test
 ### Backend (.env)
 ```
 NODE_ENV=development
-PORT=5000
+PORT=5001
 MONGODB_URI=your_mongodb_uri
 JWT_SECRET=your_jwt_secret
 JWT_REFRESH_SECRET=your_refresh_secret
@@ -162,8 +166,8 @@ FRONTEND_URL=http://localhost:5173
 
 ### Frontend (.env)
 ```
-VITE_API_URL=http://localhost:5000/api
-VITE_SOCKET_URL=http://localhost:5000
+VITE_API_URL=http://localhost:5001/api
+VITE_SOCKET_URL=http://localhost:5001
 ```
 
 ## 🤝 Contributing
