@@ -1,6 +1,9 @@
 require('dotenv').config();
+// --- Debugging Logs ---
+console.log('--- Starting Server ---');
+console.log(`[DEBUG] NODE_ENV: ${process.env.NODE_ENV}`);
+console.log(`[DEBUG] MONGODB_URI is set: ${!!process.env.MONGODB_URI}`);
 const express = require('express');
-const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
@@ -11,6 +14,7 @@ const { Server } = require('socket.io');
 
 const logger = require('./utils/logger');
 const { errorHandler } = require('./middleware/errorHandler');
+const connectDB = require('./config/database');
 const initializeSocket = require('./socket');
 
 // Import routes
@@ -90,27 +94,21 @@ app.use('*', (req, res) => {
 // Error Handler Middleware
 app.use(errorHandler);
 
-// Database Connection
-mongoose
-  .connect(process.env.MONGODB_URI)
-  .then(() => {
-    logger.info('✅ MongoDB connected successfully');
-    
-    // Start Server
-    const PORT = process.env.PORT || 5000;
-    server.listen(PORT, () => {
-      logger.info(`🚀 Server is running on port ${PORT}`);
-      logger.info(`📝 Environment: ${process.env.NODE_ENV}`);
-    });
-  })
-  .catch((error) => {
-    logger.error('❌ MongoDB connection error:', error);
-    process.exit(1);
+// Start the server
+const startServer = async () => {
+  await connectDB();
+  const PORT = process.env.PORT || 5000;
+  server.listen(PORT, () => {
+    logger.info(`🚀 Server is running on port ${PORT}`);
+    logger.info(`📝 Environment: ${process.env.NODE_ENV}`);
   });
+};
+
+startServer();
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err) => {
-  logger.error('UNHANDLED REJECTION! 💥 Shutting down...', err);
+  console.error('UNHANDLED REJECTION! 💥 Shutting down...', err);
   server.close(() => {
     process.exit(1);
   });
@@ -118,7 +116,7 @@ process.on('unhandledRejection', (err) => {
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (err) => {
-  logger.error('UNCAUGHT EXCEPTION! 💥 Shutting down...', err);
+  console.error('UNCAUGHT EXCEPTION! 💥 Shutting down...', err);
   process.exit(1);
 });
 
