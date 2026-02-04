@@ -28,7 +28,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
             duration: 3000,
             style: {
               background: '#363636',
-              color: '#fff',
+              color: '#e40d0d',
             },
             success: {
               iconTheme: {

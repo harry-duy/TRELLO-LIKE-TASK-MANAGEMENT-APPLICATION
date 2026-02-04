@@ -7,5 +7,6 @@ const { protect } = require('../middleware/auth.middleware');
 router.get('/board/:boardId', protect, activityController.getBoardActivities);
 router.get('/workspace/:workspaceId', protect, activityController.getWorkspaceActivities);
 router.get('/card/:cardId', protect, activityController.getCardActivities);
+router.get('/analytics/:workspaceId', protect, activityController.getWorkspaceAnalytics);
 
 module.exports = router;
