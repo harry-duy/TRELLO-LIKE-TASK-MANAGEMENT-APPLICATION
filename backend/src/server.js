@@ -3,6 +3,7 @@ require('dotenv').config();
 console.log('--- Starting Server ---');
 console.log(`[DEBUG] NODE_ENV: ${process.env.NODE_ENV}`);
 console.log(`[DEBUG] MONGODB_URI is set: ${!!process.env.MONGODB_URI}`);
+console.log("database.js ", process.env.MONGODB_URI );
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
