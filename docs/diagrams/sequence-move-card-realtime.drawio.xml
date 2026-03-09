@@ -1,0 +1,27 @@
+<mxfile host="app.diagrams.net" modified="2026-03-03T00:00:00Z" agent="Codex" version="24.0.0" editor="draw.io">
+  <diagram id="sequence-move-card" name="Sequence - Move Card Realtime">
+    <mxGraphModel dx="1700" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="a" value="User A (Browser)" style="shape=umlLifeline;perimeter=lifelinePerimeter;" vertex="1" parent="1"><mxGeometry x="80" y="40" width="110" height="760" as="geometry"/></mxCell>
+        <mxCell id="b" value="Frontend A" style="shape=umlLifeline;perimeter=lifelinePerimeter;" vertex="1" parent="1"><mxGeometry x="300" y="40" width="110" height="760" as="geometry"/></mxCell>
+        <mxCell id="c" value="Backend API" style="shape=umlLifeline;perimeter=lifelinePerimeter;" vertex="1" parent="1"><mxGeometry x="520" y="40" width="110" height="760" as="geometry"/></mxCell>
+        <mxCell id="d" value="MongoDB" style="shape=umlLifeline;perimeter=lifelinePerimeter;" vertex="1" parent="1"><mxGeometry x="740" y="40" width="100" height="760" as="geometry"/></mxCell>
+        <mxCell id="e" value="Socket.io" style="shape=umlLifeline;perimeter=lifelinePerimeter;" vertex="1" parent="1"><mxGeometry x="950" y="40" width="110" height="760" as="geometry"/></mxCell>
+        <mxCell id="f" value="Frontend B" style="shape=umlLifeline;perimeter=lifelinePerimeter;" vertex="1" parent="1"><mxGeometry x="1170" y="40" width="110" height="760" as="geometry"/></mxCell>
+
+        <mxCell id="m1" value="1. Drag card to target list" edge="1" parent="1" source="a" target="b" style="endArrow=block;"><mxGeometry relative="1" as="geometry"><mxPoint x="0" y="140" as="sourcePoint"/><mxPoint x="0" y="140" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="m2" value="2. PUT /api/cards/:id/move&#xa;{listId, position, boardId}" edge="1" parent="1" source="b" target="c" style="endArrow=block;"><mxGeometry relative="1" as="geometry"><mxPoint x="0" y="200" as="sourcePoint"/><mxPoint x="0" y="200" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="m3" value="3. Update card list/position" edge="1" parent="1" source="c" target="d" style="endArrow=block;"><mxGeometry relative="1" as="geometry"><mxPoint x="0" y="260" as="sourcePoint"/><mxPoint x="0" y="260" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="m4" value="4. Save activity(card_moved)" edge="1" parent="1" source="c" target="d" style="endArrow=block;dashed=1;"><mxGeometry relative="1" as="geometry"><mxPoint x="0" y="320" as="sourcePoint"/><mxPoint x="0" y="320" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="m5" value="5. Emit card:moved (board room)" edge="1" parent="1" source="c" target="e" style="endArrow=block;"><mxGeometry relative="1" as="geometry"><mxPoint x="0" y="380" as="sourcePoint"/><mxPoint x="0" y="380" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="m6" value="6. 200 OK + updated card" edge="1" parent="1" source="c" target="b" style="endArrow=block;dashed=1;"><mxGeometry relative="1" as="geometry"><mxPoint x="0" y="440" as="sourcePoint"/><mxPoint x="0" y="440" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="m7" value="7. Push card:moved event" edge="1" parent="1" source="e" target="f" style="endArrow=block;"><mxGeometry relative="1" as="geometry"><mxPoint x="0" y="500" as="sourcePoint"/><mxPoint x="0" y="500" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="m8" value="8. Refetch board state" edge="1" parent="1" source="b" target="b" style="endArrow=block;dashed=1;"><mxGeometry relative="1" as="geometry"><mxPoint x="420" y="560" as="sourcePoint"/><mxPoint x="420" y="560" as="targetPoint"/></mxGeometry></mxCell>
+        <mxCell id="m9" value="9. Refetch board state" edge="1" parent="1" source="f" target="f" style="endArrow=block;dashed=1;"><mxGeometry relative="1" as="geometry"><mxPoint x="1290" y="620" as="sourcePoint"/><mxPoint x="1290" y="620" as="targetPoint"/></mxGeometry></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

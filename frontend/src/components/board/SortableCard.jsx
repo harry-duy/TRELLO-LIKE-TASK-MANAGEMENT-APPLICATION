@@ -4,7 +4,7 @@ import { CSS } from '@dnd-kit/utilities';
 
 export function SortableCard({ card }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = 
-    useSortable({ id: card._id });
+    useSortable({ id: card._id, data: { type: 'card', listId: card.list } });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -18,7 +18,7 @@ export function SortableCard({ card }) {
       style={style}
       {...attributes}
       {...listeners}
-      className="card card-hover mb-2 cursor-grab active:cursor-grabbing"
+      className="card-item mb-2 cursor-grab active:cursor-grabbing"
     >
       {card.title}
     </div>

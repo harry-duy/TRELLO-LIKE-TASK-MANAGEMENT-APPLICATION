@@ -1,0 +1,56 @@
+@startuml
+left to right direction
+skinparam packageStyle rectangle
+skinparam shadowing false
+
+actor User
+actor Admin
+actor Staff as "Staff (Optional)"
+
+rectangle "Trello-like Task Management System" {
+  usecase UC_Auth as "Register / Login / Refresh Token / Forgot Password"
+  usecase UC_Workspace as "Create and manage workspace"
+  usecase UC_Board as "Create / Update / Delete board"
+  usecase UC_List as "Create / Reorder / Update / Delete list"
+  usecase UC_Card as "Create / Update / Delete card"
+  usecase UC_DnD as "Drag and drop cards across lists"
+  usecase UC_Assignee as "Assign / unassign members on card"
+  usecase UC_Due as "Set and update due date"
+  usecase UC_Label as "Manage labels on card"
+  usecase UC_Checklist as "Manage checklist items"
+  usecase UC_Comment as "Comment thread on card"
+  usecase UC_Filter as "Search / filter cards"
+  usecase UC_Realtime as "Realtime update (Socket.io)"
+  usecase UC_Activity as "Activity log"
+  usecase UC_MemberMgmt as "Invite / remove members in workspace"
+  usecase UC_Role as "Assign roles (admin/member)"
+  usecase UC_Analytics as "View productivity analytics"
+}
+
+User --> UC_Auth
+User --> UC_Workspace
+User --> UC_Board
+User --> UC_List
+User --> UC_Card
+User --> UC_DnD
+User --> UC_Assignee
+User --> UC_Due
+User --> UC_Label
+User --> UC_Checklist
+User --> UC_Comment
+User --> UC_Filter
+User --> UC_Realtime
+User --> UC_Activity
+
+Admin --> UC_MemberMgmt
+Admin --> UC_Role
+Admin --> UC_Analytics
+
+Staff --> UC_Activity
+
+UC_DnD .> UC_Realtime : <<include>>
+UC_Comment .> UC_Realtime : <<include>>
+UC_Card .> UC_Activity : <<include>>
+UC_DnD .> UC_Activity : <<include>>
+
+@enduml

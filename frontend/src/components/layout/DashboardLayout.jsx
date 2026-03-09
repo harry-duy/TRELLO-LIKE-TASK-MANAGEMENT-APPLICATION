@@ -11,23 +11,26 @@ export default function DashboardLayout({ children }) {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
-      <header className="bg-white border-b border-gray-200 shadow-sm">
+    <div className="min-h-screen flex flex-col board-surface text-slate-100">
+      <header className="bg-slate-900/40 border-b border-white/10 backdrop-blur">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-14">
-            <Link to="/dashboard" className="text-xl font-bold text-blue-600">
+            <Link
+              to="/dashboard"
+              className="text-xl font-semibold text-emerald-200"
+            >
               Trello Clone
             </Link>
             <nav className="flex items-center gap-4">
               <Link
                 to="/dashboard"
-                className="text-gray-600 hover:text-gray-900 font-medium"
+                className="text-emerald-50/80 hover:text-white font-medium"
               >
                 Dashboard
               </Link>
               {user && (
                 <div className="flex items-center gap-3">
-                  <span className="text-sm text-gray-600">
+                  <span className="text-sm text-emerald-50/70">
                     {user.name || user.email}
                   </span>
                   <button
@@ -35,7 +38,7 @@ export default function DashboardLayout({ children }) {
                     onClick={handleLogout}
                     className="btn btn-secondary btn-sm"
                   >
-                    Đăng xuất
+                    Dang xuat
                   </button>
                 </div>
               )}
