@@ -46,10 +46,10 @@ passport.use(
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
-        const email = profile.emails?.[0]?.value;
-        if (!email) {
-          return done(new Error('Không lấy được email từ Facebook'), null);
-        }
+        // Nếu Facebook không trả về email (hoặc không có scope email),
+        // tạo một email giả dựa trên profile.id để vẫn map được user.
+        const email =
+          profile.emails?.[0]?.value || `${profile.id}@facebook.local`;
         let user = await User.findOne({ email });
         if (user) {
           if (!user.avatar && profile.photos?.[0]?.value) {

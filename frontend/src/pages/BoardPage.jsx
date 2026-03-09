@@ -25,6 +25,7 @@ import {
   onCommentAdded,
 } from '@config/socket';
 import toast from 'react-hot-toast';
+import { useTranslation } from '../hooks/useTranslation';
 
 export default function BoardPage() {
   const { boardId } = useParams();
@@ -39,6 +40,7 @@ export default function BoardPage() {
   const lastTrashHover = useRef(false);
   const lastOverId = useRef(null);
   const overTrashRef = useRef(false);
+  const { t } = useTranslation();
 
   const { data: board, isLoading, isError } = useQuery({
     queryKey: ['board', boardId],
@@ -118,11 +120,46 @@ export default function BoardPage() {
     const position = overList.cards?.length || 0;
 
     try {
+      // Optimistic update UI: di chuyển thẻ trong cache React Query
+      queryClient.setQueryData(['board', boardId], (prev) => {
+        if (!prev || !prev.data && !prev.lists) return prev;
+        // Một số API trả { success, data }, một số trả trực tiếp board
+        const boardData = prev.lists ? prev : prev.data;
+        if (!boardData) return prev;
+
+        const cloned = {
+          ...boardData,
+          lists: boardData.lists.map((l) => ({
+            ...l,
+            cards: Array.isArray(l.cards) ? [...l.cards] : [],
+          })),
+        };
+
+        const fromList = cloned.lists.find((l) =>
+          l.cards.some((c) => c._id === cardId)
+        );
+        const toList = cloned.lists.find((l) => l._id === listId);
+        if (!fromList || !toList) return prev;
+
+        const idx = fromList.cards.findIndex((c) => c._id === cardId);
+        if (idx === -1) return prev;
+        const [card] = fromList.cards.splice(idx, 1);
+        card.list = listId;
+        toList.cards.push(card);
+
+        // Trả về đúng shape ban đầu
+        if (prev.lists) {
+          return cloned;
+        }
+        return { ...prev, data: cloned };
+      });
+
       await cardService.moveCard(cardId, { listId, position, boardId });
       emitCardMove({ boardId, cardId, listId, position });
-      queryClient.invalidateQueries(['board', boardId]);
     } catch (error) {
       toast.error('Could not move card');
+      // Nếu lỗi, reload lại từ server để đồng bộ
+      queryClient.invalidateQueries(['board', boardId]);
     }
   };
 
@@ -145,13 +182,13 @@ export default function BoardPage() {
     return (
       <div className="flex items-center justify-center h-full text-white">
         <div className="spinner border-white"></div>
-        <span className="ml-2">Đang tải bảng...</span>
+        <span className="ml-2">{t('loadingBoard')}</span>
       </div>
     );
   }
 
   if (isError) {
-    return <div className="text-center p-10 text-white">Lỗi tải dữ liệu bảng</div>;
+    return <div className="text-center p-10 text-white">{t('boardError')}</div>;
   }
 
   return (
@@ -160,7 +197,7 @@ export default function BoardPage() {
         <div className="board-header flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <div className="text-xs uppercase tracking-[0.35em] text-emerald-100/70">
-              Workspace board
+              {t('workspaceBoard')}
             </div>
             <h1 className="board-title heading-soft text-2xl md:text-3xl font-semibold mt-1">
               {board?.name}
@@ -172,8 +209,8 @@ export default function BoardPage() {
             )}
           </div>
           <div className="flex gap-2">
-            <button className="board-button">Lọc</button>
-            <button className="board-button">Thành viên</button>
+            <button className="board-button">{t('filter')}</button>
+            <button className="board-button">{t('members')}</button>
           </div>
         </div>
       </div>
@@ -238,20 +275,20 @@ export default function BoardPage() {
               <div className="bg-white/90 rounded-2xl p-4 shadow-xl">
                 <input
                   className="input mb-2"
-                  placeholder="Tên danh sách..."
+                  placeholder={t('listNamePlaceholder')}
                   value={listName}
                   onChange={(event) => setListName(event.target.value)}
                   autoFocus
                 />
                 <div className="flex gap-2">
                   <button onClick={handleAddList} className="btn btn-primary btn-sm">
-                    Thêm danh sách
+                    {t('addList')}
                   </button>
                   <button
                     onClick={() => setIsAddingList(false)}
                     className="text-slate-600"
                   >
-                    Hủy
+                    {t('cancel')}
                   </button>
                 </div>
               </div>
@@ -260,7 +297,7 @@ export default function BoardPage() {
                 onClick={() => setIsAddingList(true)}
                 className="w-full bg-white/15 hover:bg-white/25 text-white p-4 rounded-2xl text-left font-semibold transition-all border border-white/10"
               >
-                + Thêm danh sách khác
+                + {t('addAnotherList')}
               </button>
             )}
           </div>
@@ -280,7 +317,7 @@ export default function BoardPage() {
             data-droppable="trash"
           >
             <span className="text-lg">🗑️</span>
-            Kéo thả thẻ vào đây để xóa
+            {t('trashHint')}
           </div>
         </div>
 

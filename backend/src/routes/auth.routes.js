@@ -51,8 +51,10 @@ router.get('/google/callback',
 );
 
 // ── Facebook OAuth ──────────────────────────────────────────────────────────────
-router.get('/facebook',
-  passport.authenticate('facebook', { scope: ['email', 'public_profile'], session: false })
+// Đơn giản hóa: không yêu cầu scope email để tránh lỗi "Invalid Scopes: email"
+router.get(
+  '/facebook',
+  passport.authenticate('facebook', { session: false })
 );
 router.get('/facebook/callback',
   passport.authenticate('facebook', {

@@ -1,7 +1,10 @@
 // frontend/src/components/layout/AuthLayout.jsx
 import { Link } from 'react-router-dom';
+import { useTranslation } from '../../hooks/useTranslation';
 
 export default function AuthLayout({ children }) {
+  const { t, language, setLanguage } = useTranslation();
+
   return (
     <div className="min-h-screen flex" style={{
       background: 'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)',
@@ -11,18 +14,46 @@ export default function AuthLayout({ children }) {
       <div className="hidden lg:flex flex-col justify-between w-[480px] shrink-0 p-12"
         style={{ borderRight: '1px solid rgba(255,255,255,0.07)' }}>
         <div>
-          {/* Logo */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #667eea, #764ba2)' }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <rect x="3" y="3" width="7" height="10" rx="2" fill="white" fillOpacity="0.9"/>
-                <rect x="14" y="3" width="7" height="6" rx="2" fill="white" fillOpacity="0.6"/>
-                <rect x="14" y="13" width="7" height="8" rx="2" fill="white" fillOpacity="0.9"/>
-                <rect x="3" y="17" width="7" height="4" rx="2" fill="white" fillOpacity="0.6"/>
-              </svg>
+          {/* Logo + language switch */}
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ background: 'linear-gradient(135deg, #667eea, #764ba2)' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                  <rect x="3" y="3" width="7" height="10" rx="2" fill="white" fillOpacity="0.9"/>
+                  <rect x="14" y="3" width="7" height="6" rx="2" fill="white" fillOpacity="0.6"/>
+                  <rect x="14" y="13" width="7" height="8" rx="2" fill="white" fillOpacity="0.9"/>
+                  <rect x="3" y="17" width="7" height="4" rx="2" fill="white" fillOpacity="0.6"/>
+                </svg>
+              </div>
+              <span className="text-xl font-bold text-white tracking-tight">
+                {t('appName')}
+              </span>
             </div>
-            <span className="text-xl font-bold text-white tracking-tight">TaskFlow</span>
+            <div className="inline-flex rounded-full bg-white/5 border border-white/15 text-[10px] font-semibold overflow-hidden">
+              <button
+                type="button"
+                className={`px-2 py-1 ${
+                  language === 'vi'
+                    ? 'bg-white text-slate-900'
+                    : 'text-emerald-50/80 hover:bg-white/10'
+                }`}
+                onClick={() => setLanguage('vi')}
+              >
+                VI
+              </button>
+              <button
+                type="button"
+                className={`px-2 py-1 ${
+                  language === 'en'
+                    ? 'bg-white text-slate-900'
+                    : 'text-emerald-50/80 hover:bg-white/10'
+                }`}
+                onClick={() => setLanguage('en')}
+              >
+                EN
+              </button>
+            </div>
           </div>
 
           <div className="mt-16">
@@ -93,7 +124,7 @@ export default function AuthLayout({ children }) {
                 <rect x="14" y="13" width="7" height="8" rx="2" fill="white"/>
               </svg>
             </div>
-            <span className="text-lg font-bold text-white">TaskFlow</span>
+            <span className="text-lg font-bold text-white">{t('appName')}</span>
           </div>
 
           {/* Card */}
