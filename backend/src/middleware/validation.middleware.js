@@ -227,12 +227,9 @@ const cardSchemas = {
     }),
   }),
 
-  addChecklist: z.object({
+  addChecklistItem: z.object({
     body: z.object({
-      items: z.array(z.object({
-        text: z.string().min(1).max(200),
-        completed: z.boolean().default(false),
-      })).min(1, 'At least one checklist item is required'),
+      text: z.string().min(1, 'Checklist item is required').max(200),
     }),
     params: z.object({
       id: commonSchemas.objectId,

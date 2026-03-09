@@ -1,49 +1,52 @@
 import apiClient from '@config/api';
 
 const cardService = {
-  // Lấy chi tiết thẻ (bao gồm assignees và comments)
   getDetails: async (cardId) => {
     const response = await apiClient.get(`/cards/${cardId}`);
-    return response.data;
+    return response?.data ?? response;
   },
 
-  // Tạo thẻ mới trong một danh sách
   create: async (cardData) => {
     const response = await apiClient.post('/cards', cardData);
-    return response.data;
+    return response?.data ?? response;
   },
 
-  // Cập nhật thông tin thẻ (tiêu đề, mô tả, deadline...)
   update: async (cardId, updates) => {
     const response = await apiClient.put(`/cards/${cardId}`, updates);
-    return response.data;
+    return response?.data ?? response;
   },
 
-  // Di chuyển thẻ (Thay đổi listId hoặc position) - Dùng cho Drag & Drop
   moveCard: async (cardId, moveData) => {
     const response = await apiClient.put(`/cards/${cardId}/move`, moveData);
-    return response.data;
+    return response?.data ?? response;
   },
 
-  // Xóa thẻ
   delete: async (cardId) => {
     const response = await apiClient.delete(`/cards/${cardId}`);
-    return response.data;
+    return response?.data ?? response;
   },
 
-  // Thêm bình luận mới
   addComment: async (cardId, commentData) => {
-    const response = await apiClient.post(`/cards/${cardId}/comments`, commentId);
-    return response.data;
+    const response = await apiClient.post(`/cards/${cardId}/comments`, commentData);
+    return response?.data ?? response;
   },
 
-  // Tìm kiếm thẻ theo keyword/nhãn
+  addChecklistItem: async (cardId, text) => {
+    const response = await apiClient.post(`/cards/${cardId}/checklist`, { text });
+    return response?.data ?? response;
+  },
+
+  toggleChecklistItem: async (cardId, itemId) => {
+    const response = await apiClient.patch(`/cards/${cardId}/checklist/${itemId}`);
+    return response?.data ?? response;
+  },
+
   search: async (boardId, filters) => {
-    const response = await apiClient.get(`/cards/search`, {
-      params: { boardId, ...filters }
+    const response = await apiClient.get('/cards/search', {
+      params: { boardId, ...filters },
     });
-    return response.data;
-  }
+    return response?.data ?? response;
+  },
 };
 
 export default cardService;
