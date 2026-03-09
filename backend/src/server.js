@@ -1,4 +1,6 @@
 require('dotenv').config();
+const passport = require('./config/passport');
+
 // --- Debugging Logs ---
 console.log('--- Starting Server ---');
 console.log(`[DEBUG] NODE_ENV: ${process.env.NODE_ENV}`);
@@ -59,6 +61,7 @@ app.use(
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
+app.use(passport.initialize());
 
 // Logging Middleware
 if (process.env.NODE_ENV === 'development') {

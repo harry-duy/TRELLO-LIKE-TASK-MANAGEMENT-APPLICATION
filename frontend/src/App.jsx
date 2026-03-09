@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from '@store/authStore';
+import OAuthCallbackPage from '@pages/auth/OAuthCallbackPage';
 
 // Layouts
 import AuthLayout from '@components/layout/AuthLayout';
@@ -121,6 +122,7 @@ function App() {
       {/* Default Routes */}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<NotFoundPage />} />
+      <Route path="/oauth-callback" element={<OAuthCallbackPage />} />
     </Routes>
   );
 }
