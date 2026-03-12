@@ -4,6 +4,9 @@ const User = require('../models/user.model');
 const { asyncHandler } = require('../middleware/errorHandler');
 const { AppError } = require('../middleware/errorHandler');
 const logger = require('../utils/logger');
+const Activity = require('../models/activity.model');
+const sendEmail = require('../utils/sendEmail');
+
 
 // Generate JWT Token
 const generateToken = (id) => {
@@ -20,13 +23,13 @@ const generateRefreshToken = (id) => {
 };
 
 // Send token response
-const sendTokenResponse = (user, statusCode, res) => {
+const sendTokenResponse = async (user, statusCode, res) => {
   const accessToken = generateToken(user._id);
   const refreshToken = generateRefreshToken(user._id);
 
   // Save refresh token to user
   user.refreshToken = refreshToken;
-  user.save({ validateBeforeSave: false });
+  await user.save({ validateBeforeSave: false });
 
   // Set refresh token in httpOnly cookie
   const cookieOptions = {
@@ -68,7 +71,7 @@ exports.register = asyncHandler(async (req, res, next) => {
 
   logger.info(`New user registered: ${user.email}`);
 
-  sendTokenResponse(user, 201, res);
+  await sendTokenResponse(user, 201, res);
 });
 
 // @desc    Login user
@@ -96,7 +99,7 @@ exports.login = asyncHandler(async (req, res, next) => {
 
   logger.info(`User logged in: ${user.email}`);
 
-  sendTokenResponse(user, 200, res);
+  await sendTokenResponse(user, 200, res);
 });
 
 // @desc    Logout user
@@ -139,12 +142,26 @@ exports.updateProfile = asyncHandler(async (req, res, next) => {
 
   const fieldsToUpdate = {};
   if (name) fieldsToUpdate.name = name;
-  if (avatar) fieldsToUpdate.avatar = avatar;
+  if (req.file) { fieldsToUpdate.avatar = req.file.path; }
 
   const user = await User.findByIdAndUpdate(req.user._id, fieldsToUpdate, {
     new: true,
     runValidators: true,
   });
+
+  // gọi log - cho phép xem hoạt động gần đây  //
+  await Activity.log({
+    actor: req.user._id,
+    action: 'user_updated',
+    target: req.user._id,
+    targetType: 'User',
+    metadata: {
+      updatedFields: Object.keys(fieldsToUpdate),
+      timestamp: new Date()
+    }
+  });
+
+
 
   res.status(200).json({
     success: true,
@@ -170,7 +187,7 @@ exports.changePassword = asyncHandler(async (req, res, next) => {
   user.password = newPassword;
   await user.save();
 
-  sendTokenResponse(user, 200, res);
+  await sendTokenResponse(user, 200, res);
 });
 
 // @desc    Forgot password
@@ -189,18 +206,29 @@ exports.forgotPassword = asyncHandler(async (req, res, next) => {
   await user.save({ validateBeforeSave: false });
 
   // Create reset URL
-  const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
+  const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/+$/, '');
+  const resetUrl = `${frontendUrl}/reset-password/${resetToken}`;
 
-  // TODO: Send email with reset URL
-  // For now, just return the token (in production, send via email)
-  logger.info(`Password reset token generated for ${email}: ${resetToken}`);
+  const message = `Bạn nhận được email này vì bạn (hoặc ai đó) đã yêu cầu đặt lại mật khẩu. Vui lòng click vào link bên dưới để đặt lại mật khẩu:\n\n${resetUrl}\n\nNếu bạn không yêu cầu, vui lòng bỏ qua email này.`;
 
-  res.status(200).json({
-    success: true,
-    message: 'Password reset link sent to email',
-    // Remove this in production - only for development
-    resetToken: process.env.NODE_ENV === 'development' ? resetToken : undefined,
-  });
+  try {
+    await sendEmail({
+      email: user.email,
+      subject: 'Đặt lại mật khẩu - Trello Clone',
+      message,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Link đặt lại mật khẩu đã được gửi tới email',
+    });
+  } catch (error) {
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    await user.save({ validateBeforeSave: false });
+
+    return next(new AppError('Không thể gửi email. Vui lòng thử lại sau.', 500));
+  }
 });
 
 // @desc    Reset password
@@ -233,7 +261,7 @@ exports.resetPassword = asyncHandler(async (req, res, next) => {
 
   logger.info(`Password reset successful for ${user.email}`);
 
-  sendTokenResponse(user, 200, res);
+  await sendTokenResponse(user, 200, res);
 });
 
 // @desc    Refresh access token

@@ -41,11 +41,13 @@ apiClient.interceptors.response.use(
 
       try {
         // Try to refresh token
-        const { accessToken } = await axios.post(
+        const response = await axios.post(
           `${import.meta.env.VITE_API_URL}/auth/refresh-token`,
           {},
           { withCredentials: true }
         );
+
+        const accessToken = response.data?.data?.accessToken;
 
         // Update token in store
         useAuthStore.getState().setAccessToken(accessToken);

@@ -298,6 +298,8 @@ CLOUDINARY_API_SECRET=your_api_secret
 FRONTEND_URL=https://your-frontend.vercel.app
 ```
 
+> Quan trọng: `FRONTEND_URL` phải đúng domain frontend production để link reset password trong email hoạt động; không thêm dấu `/` ở cuối URL.
+
 5. **Deploy**
 - Click "Create Web Service"
 - Wait for build & deployment

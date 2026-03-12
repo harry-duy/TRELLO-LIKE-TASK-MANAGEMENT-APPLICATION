@@ -444,6 +444,7 @@ const LoginForm = () => {
    - Framework Preset: Vite
    - Build Command: `npm run build`
    - Output Directory: `dist`
+  - Ensure `vercel.json` exists with SPA rewrite (`/(.*)` -> `/index.html`) to avoid 404 on direct links (e.g. `/reset-password/:token`)
 
 4. **Set Environment Variables**
    ```
@@ -470,6 +471,16 @@ const LoginForm = () => {
 ```
 
 2. **Deploy via Netlify CLI or dashboard**
+
+### Render (Static Site)
+
+If you deploy frontend as a Render **Static Site**, add a rewrite rule in Render dashboard:
+
+- **Source**: `/*`
+- **Destination**: `/index.html`
+- **Action**: `Rewrite`
+
+This is required for SPA routes (e.g. `/reset-password/:token`) to avoid 404 when opening links directly.
 
 ### Build for Production
 

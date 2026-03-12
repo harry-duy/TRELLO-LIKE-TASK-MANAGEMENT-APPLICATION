@@ -10,6 +10,7 @@ import DashboardLayout from '@components/layout/DashboardLayout';
 import LoginPage from '@pages/auth/LoginPage';
 import RegisterPage from '@pages/auth/RegisterPage';
 import ForgotPasswordPage from '@pages/auth/ForgotPasswordPage';
+import ResetPasswordPage from '@pages/auth/ResetPasswordPage';
 import DashboardPage from '@pages/DashboardPage';
 import WorkspacePage from '@pages/WorkspacePage';
 import BoardPage from '@pages/BoardPage';
@@ -83,6 +84,14 @@ function App() {
               <ForgotPasswordPage />
             </AuthLayout>
           </PublicRoute>
+        }
+      />
+      <Route
+        path="/reset-password/:token"
+        element={
+          <AuthLayout>
+            <ResetPasswordPage />
+          </AuthLayout>
         }
       />
 

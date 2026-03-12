@@ -164,6 +164,8 @@ CLOUDINARY_API_SECRET=your_api_secret
 FRONTEND_URL=http://localhost:5173
 ```
 
+> Lưu ý: `FRONTEND_URL` phải trùng chính xác domain frontend đang deploy (ví dụ `https://your-frontend.vercel.app`) và không có dấu `/` ở cuối.
+
 ### Frontend (.env)
 ```
 VITE_API_URL=http://localhost:5001/api
