@@ -78,11 +78,11 @@ npm run dev:frontend  # Chỉ frontend
 ## 🎯 Features Checklist
 
 ### Core Features (Must Have)
-- [ ] Authentication (JWT + Refresh Token)
-- [ ] User Registration & Login
-- [ ] Workspace Management
+- [x] Authentication (JWT + Refresh Token)
+- [x] User Registration & Login
+- [x] Workspace Management
 - [ ] Board/List/Card CRUD
-- [ ] Drag & Drop (Cards between lists)
+- [x] Drag & Drop (Cards between lists)
 - [ ] Card Details (Assignees, Due Date, Labels, Checklist)
 - [ ] Comments on Cards
 - [ ] Real-time Updates (Socket.io)

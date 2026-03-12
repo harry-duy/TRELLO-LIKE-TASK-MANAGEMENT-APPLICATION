@@ -4,6 +4,7 @@ const User = require('../models/user.model');
 const { asyncHandler } = require('../middleware/errorHandler');
 const { AppError } = require('../middleware/errorHandler');
 const logger = require('../utils/logger');
+const sendEmail = require('../utils/sendEmail');
 
 // Generate JWT Token
 const generateToken = (id) => {
@@ -189,18 +190,33 @@ exports.forgotPassword = asyncHandler(async (req, res, next) => {
   await user.save({ validateBeforeSave: false });
 
   // Create reset URL
-  const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
+  const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/+$/, '');
+  const resetUrl = `${frontendUrl}/reset-password/${resetToken}`;
 
-  // TODO: Send email with reset URL
-  // For now, just return the token (in production, send via email)
-  logger.info(`Password reset token generated for ${email}: ${resetToken}`);
+  const message = `You are receiving this email because you (or someone else) requested a password reset. Please click the link below to reset your password:\n\n${resetUrl}\n\nIf you did not request this, please ignore this email.`;
 
-  res.status(200).json({
-    success: true,
-    message: 'Password reset link sent to email',
-    // Remove this in production - only for development
-    resetToken: process.env.NODE_ENV === 'development' ? resetToken : undefined,
-  });
+  try {
+    await sendEmail({
+      email: user.email,
+      subject: 'Password reset - Trello Clone',
+      message,
+    });
+
+    logger.info(`Password reset email sent to ${user.email}`);
+
+    res.status(200).json({
+      success: true,
+      message: 'Password reset link sent to email',
+      resetToken: process.env.NODE_ENV === 'development' ? resetToken : undefined,
+    });
+  } catch (error) {
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    await user.save({ validateBeforeSave: false });
+
+    logger.error(`Failed to send reset email to ${user.email}: ${error.message}`);
+    return next(new AppError('Cannot send email right now. Please try again later.', 500));
+  }
 });
 
 // @desc    Reset password
