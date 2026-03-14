@@ -21,13 +21,13 @@ const generateRefreshToken = (id) => {
 };
 
 // Send token response
-const sendTokenResponse = (user, statusCode, res) => {
+const sendTokenResponse = async (user, statusCode, res) => {
   const accessToken = generateToken(user._id);
   const refreshToken = generateRefreshToken(user._id);
 
   // Save refresh token to user
   user.refreshToken = refreshToken;
-  user.save({ validateBeforeSave: false });
+  await user.save({ validateBeforeSave: false });
 
   // Set refresh token in httpOnly cookie
   const cookieOptions = {
@@ -69,7 +69,7 @@ exports.register = asyncHandler(async (req, res, next) => {
 
   logger.info(`New user registered: ${user.email}`);
 
-  sendTokenResponse(user, 201, res);
+  await sendTokenResponse(user, 201, res);
 });
 
 // @desc    Login user
@@ -97,7 +97,7 @@ exports.login = asyncHandler(async (req, res, next) => {
 
   logger.info(`User logged in: ${user.email}`);
 
-  sendTokenResponse(user, 200, res);
+  await sendTokenResponse(user, 200, res);
 });
 
 // @desc    Logout user
@@ -171,7 +171,7 @@ exports.changePassword = asyncHandler(async (req, res, next) => {
   user.password = newPassword;
   await user.save();
 
-  sendTokenResponse(user, 200, res);
+  await sendTokenResponse(user, 200, res);
 });
 
 // @desc    Forgot password
@@ -249,7 +249,7 @@ exports.resetPassword = asyncHandler(async (req, res, next) => {
 
   logger.info(`Password reset successful for ${user.email}`);
 
-  sendTokenResponse(user, 200, res);
+  await sendTokenResponse(user, 200, res);
 });
 
 // @desc    Refresh access token

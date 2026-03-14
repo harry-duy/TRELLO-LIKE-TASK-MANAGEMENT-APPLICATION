@@ -1,15 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const { protect, restrictTo } = require('../middleware/auth.middleware');
+const userController = require('../controllers/user.controller');
 
-// TODO: Implement user routes
-// GET /api/users - Get all users (admin only)
-// GET /api/users/:id - Get user by ID
-// PUT /api/users/:id - Update user
-// DELETE /api/users/:id - Delete user (admin only)
+router.use(protect, restrictTo('admin'));
 
-router.get('/', protect, restrictTo('admin'), (req, res) => {
-  res.json({ message: 'Get all users - TODO' });
-});
+router.get('/', userController.getUsers);
+router.get('/:id', userController.getUserById);
+router.patch('/:id/role', userController.updateUserRole);
+router.patch('/:id/status', userController.updateUserStatus);
+router.delete('/:id', userController.deleteUser);
 
 module.exports = router;

@@ -3,9 +3,11 @@ import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import cardService from '@services/cardService';
 import listService from '@services/listService';
+import { useTranslation } from '@hooks/useTranslation';
 import { SortableCard } from './SortableCard';
 
 export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdated }) {
+  const { t } = useTranslation();
   const [isAdding, setIsAdding] = useState(false);
   const [title, setTitle] = useState('');
   const [isEditing, setIsEditing] = useState(false);
@@ -32,7 +34,7 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
       setIsAdding(false);
       if (onCardAdded) onCardAdded();
     } catch (err) {
-      console.error('Failed to create card:', err);
+      console.error(t('createCardError'), err);
     }
   };
 
@@ -43,18 +45,18 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
       setIsEditing(false);
       if (onListUpdated) onListUpdated();
     } catch (err) {
-      console.error('Failed to update list:', err);
+      console.error(t('updateListError'), err);
     }
   };
 
   const handleDeleteList = async () => {
-    const ok = window.confirm('Xóa danh sách này? Thẻ bên trong sẽ bị xóa.');
+    const ok = window.confirm(t('deleteListConfirm'));
     if (!ok) return;
     try {
       await listService.deleteList(list._id);
       if (onListUpdated) onListUpdated();
     } catch (err) {
-      console.error('Failed to delete list:', err);
+      console.error(t('deleteListError'), err);
     }
   };
 
@@ -66,7 +68,7 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
       >
         <div className="px-4 pt-4 pb-3 flex items-center justify-between gap-2">
           <div className="flex-1">
-            <div className="list-pill">List</div>
+            <div className="list-pill">{t('listLabel')}</div>
             <h3 className="text-base font-semibold text-white mt-1 heading-soft">
               {list.name}
             </h3>
@@ -78,7 +80,7 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
           <button
             className="h-7 w-7 rounded-full border border-white/10 text-emerald-50/70 hover:text-white hover:border-white/30 transition flex items-center justify-center text-xs"
             onClick={() => setIsEditing(true)}
-            title="Edit list"
+            title={t('editList')}
             type="button"
           >
             ✎
@@ -86,7 +88,7 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
           <button
             className="h-7 w-7 rounded-full border border-white/10 text-red-200 hover:text-white hover:border-red-300 transition flex items-center justify-center text-xs"
             onClick={handleDeleteList}
-            title="Delete list"
+            title={t('deleteList')}
             type="button"
           >
             🗑
@@ -113,7 +115,7 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
 
           {!cards.length && (
             <div className="text-xs text-emerald-50/60 italic px-1 py-2">
-              No cards yet
+              {t('noCardsYet')}
             </div>
           )}
         </div>
@@ -123,20 +125,20 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
             <div>
               <textarea
                 className="w-full p-2 border rounded-lg shadow-sm mb-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                placeholder="Card title..."
+                placeholder={t('cardTitlePlaceholder')}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 autoFocus
               />
               <div className="flex gap-2">
                 <button onClick={handleAddCard} className="btn btn-primary btn-sm">
-                  Add card
+                  {t('addCard')}
                 </button>
                 <button
                   onClick={() => setIsAdding(false)}
                   className="text-slate-500"
                 >
-                  Cancel
+                  {t('cancel')}
                 </button>
               </div>
             </div>
@@ -145,7 +147,7 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
               onClick={() => setIsAdding(true)}
               className="w-full p-2 text-slate-600 hover:bg-slate-100 text-left rounded-lg"
             >
-              + Add new card
+              {t('addNewCard')}
             </button>
           )}
         </div>
@@ -158,7 +160,7 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
             onClick={(e) => e.stopPropagation()}
           >
             <header className="mb-4">
-              <h3 className="text-lg font-semibold heading-soft">Rename list</h3>
+              <h3 className="text-lg font-semibold heading-soft">{t('renameList')}</h3>
             </header>
             <input
               className="input"
@@ -181,10 +183,10 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
                   setName(list.name);
                 }}
               >
-                Cancel
+                {t('cancel')}
               </button>
               <button className="btn btn-primary btn-sm" onClick={handleUpdateList}>
-                Save
+                {t('save')}
               </button>
             </div>
           </div>

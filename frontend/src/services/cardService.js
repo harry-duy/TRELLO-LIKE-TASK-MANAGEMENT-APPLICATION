@@ -41,6 +41,13 @@ const cardService = {
     return response?.data ?? response;
   },
 
+  moveChecklistItem: async (cardId, itemId, targetCardId) => {
+    const response = await apiClient.post(`/cards/${cardId}/checklist/${itemId}/move`, {
+      targetCardId,
+    });
+    return response?.data ?? response;
+  },
+
   search: async (boardId, filters) => {
     const response = await apiClient.get('/cards/search', {
       params: { boardId, ...filters },

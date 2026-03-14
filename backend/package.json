@@ -7,7 +7,8 @@
     "start": "node src/server.js",
     "dev": "node scripts/kill-port.js 5001 && nodemon src/server.js",
     "seed": "node scripts/seed.js",
-    "test": "jest --coverage --detectOpenHandles",
+    "bootstrap:admin": "node scripts/bootstrap-admin.js",
+    "test": "jest --coverage --detectOpenHandles --runInBand",
     "test:watch": "jest --watch",
     "lint": "eslint src/**/*.js",
     "format": "prettier --write \"src/**/*.js\""
@@ -40,6 +41,7 @@
     "multer-storage-cloudinary": "^4.0.0",
     "node-cron": "^3.0.3",
     "nodemailer": "^8.0.2",
+    "openai": "^6.27.0",
     "passport": "^0.7.0",
     "passport-facebook": "^3.0.0",
     "passport-google-oauth20": "^2.0.0",
@@ -58,6 +60,9 @@
   },
   "jest": {
     "testEnvironment": "node",
+    "setupFilesAfterEnv": [
+      "<rootDir>/tests/setup.js"
+    ],
     "coveragePathIgnorePatterns": [
       "/node_modules/"
     ],

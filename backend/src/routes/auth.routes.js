@@ -14,24 +14,31 @@ const hasFacebookOAuthConfig =
   Boolean(process.env.FACEBOOK_APP_SECRET);
 
 // Helper: sau OAuth thành công → tạo token → redirect frontend
-const handleOAuthSuccess = (req, res) => {
-  const user = req.user;
-  const accessToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN || '15m',
-  });
-  const refreshToken = jwt.sign({ id: user._id }, process.env.JWT_REFRESH_SECRET, {
-    expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
-  });
-  user.refreshToken = refreshToken;
-  user.save({ validateBeforeSave: false });
-  res.cookie('refreshToken', refreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-  res.redirect(`${frontendUrl}/oauth-callback?token=${accessToken}`);
+const handleOAuthSuccess = async (req, res, next) => {
+  try {
+    const user = req.user;
+    const accessToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: process.env.JWT_EXPIRES_IN || '15m',
+    });
+    const refreshToken = jwt.sign({ id: user._id }, process.env.JWT_REFRESH_SECRET, {
+      expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
+    });
+
+    user.refreshToken = refreshToken;
+    await user.save({ validateBeforeSave: false });
+
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    res.redirect(`${frontendUrl}/oauth-callback?token=${accessToken}`);
+  } catch (error) {
+    next(error);
+  }
 };
 
 // ── Email/Password ──────────────────────────────────────────────────────────────

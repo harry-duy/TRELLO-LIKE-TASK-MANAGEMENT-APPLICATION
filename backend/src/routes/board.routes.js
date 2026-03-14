@@ -4,9 +4,7 @@ const { protect, isBoardMember, isWorkspaceMember } = require('../middleware/aut
 const boardController = require('../controllers/board.controller');
 const { validate, boardSchemas } = require('../middleware/validation.middleware');
 
-router.get('/', protect, (req, res) => {
-  res.json({ message: 'Get all boards - TODO' });
-});
+router.get('/', protect, boardController.getBoards);
 
 router.post(
   '/',
@@ -17,5 +15,13 @@ router.post(
 );
 
 router.get('/:id', protect, isBoardMember, boardController.getBoard);
+router.put(
+  '/:id',
+  protect,
+  validate(boardSchemas.update),
+  isBoardMember,
+  boardController.updateBoard
+);
+router.delete('/:id', protect, isBoardMember, boardController.deleteBoard);
 
 module.exports = router;

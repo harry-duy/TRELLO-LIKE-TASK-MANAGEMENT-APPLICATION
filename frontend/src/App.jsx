@@ -15,6 +15,7 @@ import ResetPasswordPage from '@pages/auth/ResetPasswordPage';
 import DashboardPage from '@pages/DashboardPage';
 import WorkspacePage from '@pages/WorkspacePage';
 import BoardPage from '@pages/BoardPage';
+import AdminDashboard from '@pages/AdminDashboard';
 import NotFoundPage from '@pages/NotFoundPage';
 
 // Protected Route Component
@@ -45,6 +46,28 @@ const PublicRoute = ({ children }) => {
   }
 
   return user ? <Navigate to="/dashboard" replace /> : children;
+};
+
+const AdminRoute = ({ children }) => {
+  const { user, isLoading } = useAuthStore();
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="spinner border-primary-600"></div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (user.role !== 'admin') {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
 };
 
 function App() {
@@ -125,6 +148,16 @@ function App() {
               <BoardPage />
             </DashboardLayout>
           </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          <AdminRoute>
+            <DashboardLayout>
+              <AdminDashboard />
+            </DashboardLayout>
+          </AdminRoute>
         }
       />
 

@@ -1,10 +1,15 @@
 // src/components/card/CardModal.jsx
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import cardService from '@services/cardService';
+import boardService from '@services/boardService';
+import aiService from '@services/aiService';
+import toast from 'react-hot-toast';
+import { useTranslation } from '@hooks/useTranslation';
 
 export default function CardModal({ cardId, boardId, onClose }) {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
   const [isEditing, setIsEditing] = useState(false);
   const [form, setForm] = useState({
     title: '',
@@ -12,11 +17,32 @@ export default function CardModal({ cardId, boardId, onClose }) {
     dueDate: '',
   });
   const [checklistText, setChecklistText] = useState('');
+  const [aiChecklist, setAiChecklist] = useState([]);
+  const [moveTargets, setMoveTargets] = useState({});
 
   const { data: card, isLoading } = useQuery({
     queryKey: ['card', cardId],
     queryFn: () => cardService.getDetails(cardId),
   });
+
+  const { data: board } = useQuery({
+    queryKey: ['board', boardId],
+    queryFn: () => boardService.getBoardDetails(boardId),
+    enabled: !!boardId,
+  });
+
+  const destinationCards = useMemo(
+    () =>
+      (board?.lists || []).flatMap((list) =>
+        (list.cards || [])
+          .filter((boardCard) => !boardCard.isArchived && boardCard._id !== cardId)
+          .map((boardCard) => ({
+            value: boardCard._id,
+            label: `${boardCard.title} (${list.name})`,
+          }))
+      ),
+    [board, cardId]
+  );
 
   useEffect(() => {
     if (!card) return;
@@ -42,10 +68,45 @@ export default function CardModal({ cardId, boardId, onClose }) {
     },
   });
 
+  const aiChecklistMutation = useMutation({
+    mutationFn: () =>
+      aiService.getChecklistSuggestions({
+        title: form.title,
+        description: form.description,
+      }),
+    onSuccess: (response) => {
+      const items = response?.checklist || [];
+      setAiChecklist(items);
+      toast.success(t('aiSuggestedCount', { count: items.length }));
+    },
+    onError: (error) => {
+      toast.error(error?.message || t('aiChecklistFetchError'));
+    },
+  });
+
   const toggleChecklistMutation = useMutation({
     mutationFn: (itemId) => cardService.toggleChecklistItem(cardId, itemId),
     onSuccess: () => {
       queryClient.invalidateQueries(['card', cardId]);
+    },
+  });
+
+  const moveChecklistMutation = useMutation({
+    mutationFn: ({ itemId, targetCardId }) =>
+      cardService.moveChecklistItem(cardId, itemId, targetCardId),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries(['card', cardId]);
+      queryClient.invalidateQueries(['card', variables.targetCardId]);
+      queryClient.invalidateQueries(['board', boardId]);
+      setMoveTargets((prev) => {
+        const next = { ...prev };
+        delete next[variables.itemId];
+        return next;
+      });
+      toast.success(t('moveChecklistItemSuccess'));
+    },
+    onError: (error) => {
+      toast.error(error?.message || t('moveChecklistItemError'));
     },
   });
 
@@ -66,43 +127,45 @@ export default function CardModal({ cardId, boardId, onClose }) {
     },
   });
 
-  if (isLoading) return <div className="modal-overlay">Loading...</div>;
+  if (isLoading) return <div className="modal-overlay">{t('loadingCard')}</div>;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div
-        className="modal-content card-modal max-w-3xl"
+        className="modal-content card-modal w-full max-w-3xl p-4 sm:p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="mb-6 flex items-start justify-between gap-4">
           {isEditing ? (
             <input
-              className="input text-lg font-semibold"
+              className="input min-w-0 flex-1 text-lg font-semibold"
               value={form.title}
               onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
-              placeholder="Card title"
+              placeholder={t('cardTitlePlaceholderModal')}
             />
           ) : (
-            <div>
-              <h2 className="text-2xl font-semibold heading-soft">{card?.title}</h2>
+            <div className="min-w-0 flex-1">
+              <h2 className="heading-soft break-words text-2xl font-semibold">
+                {card?.title}
+              </h2>
               <p className="text-sm text-emerald-50/70 mt-2">
-                In list: {card?.list?.name}
+                {t('inListLabel', { name: card?.list?.name || 'N/A' })}
               </p>
             </div>
           )}
           <button
             onClick={onClose}
-            className="text-emerald-50/60 hover:text-white text-xl leading-none"
-            aria-label="Close"
+            className="shrink-0 text-xl leading-none text-emerald-50/60 hover:text-white"
+            aria-label={t('close')}
           >
             ✕
           </button>
         </header>
 
         <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-          <section className="space-y-3">
+          <section className="min-w-0 space-y-3">
             <h3 className="text-sm uppercase tracking-[0.24em] text-emerald-100/70">
-              Description
+              {t('description')}
             </h3>
           {isEditing ? (
             <textarea
@@ -111,18 +174,18 @@ export default function CardModal({ cardId, boardId, onClose }) {
               onChange={(e) =>
                 setForm((prev) => ({ ...prev, description: e.target.value }))
               }
-              placeholder="Add a description..."
+              placeholder={t('addDescription')}
             />
           ) : (
             <p className="text-emerald-50/80 bg-white/5 p-4 rounded-xl">
-              {card?.description || 'No description yet...'}
+              {card?.description || t('noDescriptionYet')}
             </p>
           )}
           </section>
 
-          <section className="space-y-3">
+          <section className="min-w-0 space-y-3">
             <h3 className="text-sm uppercase tracking-[0.24em] text-emerald-100/70">
-              Due date
+              {t('dueDate')}
             </h3>
           {isEditing ? (
             <input
@@ -136,7 +199,7 @@ export default function CardModal({ cardId, boardId, onClose }) {
               <p className="text-sm text-emerald-50/80">
               {card?.dueDate
                 ? new Date(card.dueDate).toLocaleDateString()
-                : 'No due date'}
+                : t('noDueDate')}
               </p>
             </div>
           )}
@@ -145,15 +208,17 @@ export default function CardModal({ cardId, boardId, onClose }) {
 
         <section className="mt-8">
           <h3 className="text-sm uppercase tracking-[0.24em] text-emerald-100/70 mb-4">
-            Activity (Comments)
+            {t('activityComments')}
           </h3>
           <div className="space-y-4 mb-4">
             {card?.comments?.map((comment) => (
               <div key={comment._id} className="flex gap-3">
                 <div className="w-8 h-8 bg-blue-500 rounded-full flex-shrink-0" />
-                <div className="bg-white/10 p-3 rounded-xl flex-1">
+                <div className="min-w-0 flex-1 rounded-xl bg-white/10 p-3">
                   <p className="text-sm font-semibold text-white">{comment.user.name}</p>
-                  <p className="text-sm text-emerald-50/80">{comment.content}</p>
+                  <p className="break-words text-sm text-emerald-50/80">
+                    {comment.content}
+                  </p>
                 </div>
               </div>
             ))}
@@ -161,7 +226,7 @@ export default function CardModal({ cardId, boardId, onClose }) {
 
           <textarea
             className="input w-full mb-2"
-            placeholder="Write a comment..."
+            placeholder={t('writeComment')}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -174,46 +239,140 @@ export default function CardModal({ cardId, boardId, onClose }) {
 
         <section className="mt-8">
           <h3 className="text-sm uppercase tracking-[0.24em] text-emerald-100/70 mb-4">
-            Checklist
+            {t('checklist')}
           </h3>
-          <div className="space-y-3 mb-4">
-            {card?.checklist?.map((item) => (
-              <label key={item._id} className="flex items-center gap-3 text-emerald-50/80">
-                <input
-                  type="checkbox"
-                  checked={item.completed}
-                  onChange={() => toggleChecklistMutation.mutate(item._id)}
-                />
-                <span className={item.completed ? 'line-through text-emerald-50/50' : ''}>
-                  {item.text}
-                </span>
-              </label>
-            ))}
-            {!card?.checklist?.length && (
-              <p className="text-sm text-emerald-50/60">No checklist items yet.</p>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => aiChecklistMutation.mutate()}
+              disabled={aiChecklistMutation.isPending || !form.title.trim()}
+            >
+              {aiChecklistMutation.isPending
+                ? t('aiSuggestingChecklist')
+                : t('aiSuggestChecklist')}
+            </button>
+            {!!aiChecklist.length && (
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={async () => {
+                  try {
+                    for (const item of aiChecklist) {
+                      await cardService.addChecklistItem(cardId, item);
+                    }
+                    queryClient.invalidateQueries(['card', cardId]);
+                    setAiChecklist([]);
+                    toast.success(t('addedAiChecklistSuccess'));
+                  } catch (error) {
+                    toast.error(error?.message || t('addAiChecklistError'));
+                  }
+                }}
+              >
+                {t('addAllSuggestions')}
+              </button>
             )}
           </div>
-          <div className="flex gap-2">
+
+          {!!aiChecklist.length && (
+            <div className="mb-4 rounded-xl border border-white/10 bg-white/5 p-3 space-y-2">
+              {aiChecklist.map((item) => (
+                <div key={item} className="text-sm text-emerald-50/85">• {item}</div>
+              ))}
+            </div>
+          )}
+
+          <div className="space-y-3 mb-4">
+            {card?.checklist?.map((item) => {
+              const isMovingCurrentItem =
+                moveChecklistMutation.isPending &&
+                moveChecklistMutation.variables?.itemId === item._id;
+
+              return (
+                <div key={item._id} className="rounded-xl bg-white/5 p-3">
+                  <label className="flex items-center gap-3 text-emerald-50/80">
+                    <input
+                      type="checkbox"
+                      checked={item.completed}
+                      onChange={() => toggleChecklistMutation.mutate(item._id)}
+                    />
+                    <span
+                      className={`min-w-0 flex-1 break-words ${
+                        item.completed ? 'line-through text-emerald-50/50' : ''
+                      }`}
+                    >
+                      {item.text}
+                    </span>
+                  </label>
+
+                  {destinationCards.length > 0 ? (
+                    <div className="mt-3 flex min-w-0 flex-col gap-2 lg:flex-row">
+                      <select
+                        className="input min-w-0 flex-1"
+                        value={moveTargets[item._id] || ''}
+                        onChange={(e) =>
+                          setMoveTargets((prev) => ({
+                            ...prev,
+                            [item._id]: e.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">{t('moveToCardPlaceholder')}</option>
+                        {destinationCards.map((targetCard) => (
+                          <option key={targetCard.value} value={targetCard.value}>
+                            {targetCard.label}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm w-full lg:w-auto lg:shrink-0"
+                        disabled={!moveTargets[item._id] || isMovingCurrentItem}
+                        onClick={() =>
+                          moveChecklistMutation.mutate({
+                            itemId: item._id,
+                            targetCardId: moveTargets[item._id],
+                          })
+                        }
+                      >
+                        {isMovingCurrentItem
+                          ? t('movingChecklistItem')
+                          : t('moveChecklistItem')}
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-xs text-emerald-50/60">
+                      {t('noOtherCardsToMoveChecklist')}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+            {!card?.checklist?.length && (
+              <p className="text-sm text-emerald-50/60">{t('noChecklistItemsYet')}</p>
+            )}
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
             <input
-              className="input"
-              placeholder="Add checklist item..."
+              className="input min-w-0 flex-1"
+              placeholder={t('addChecklistItemPlaceholder')}
               value={checklistText}
               onChange={(e) => setChecklistText(e.target.value)}
             />
             <button
-              className="btn btn-primary btn-sm"
+              className="btn btn-primary btn-sm w-full sm:w-auto sm:shrink-0"
               onClick={() => {
                 if (!checklistText.trim()) return;
                 checklistMutation.mutate(checklistText.trim());
               }}
             >
-              Add
+              {t('add')}
             </button>
           </div>
         </section>
 
-        <div className="flex items-center justify-between mt-6">
-          <div className="flex gap-2">
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap gap-2">
             {isEditing ? (
               <>
                 <button
@@ -226,13 +385,13 @@ export default function CardModal({ cardId, boardId, onClose }) {
                   }
                   className="btn btn-primary btn-sm"
                 >
-                  Save
+                  {t('save')}
                 </button>
                 <button
                   onClick={() => setIsEditing(false)}
                   className="btn btn-secondary btn-sm"
                 >
-                  Cancel
+                  {t('cancel')}
                 </button>
               </>
             ) : (
@@ -240,14 +399,14 @@ export default function CardModal({ cardId, boardId, onClose }) {
                 onClick={() => setIsEditing(true)}
                 className="btn btn-secondary btn-sm"
               >
-                Edit
+                {t('editCard')}
               </button>
             )}
             <button
               onClick={() => deleteMutation.mutate()}
               className="btn btn-danger btn-sm"
             >
-              Delete card
+              {t('deleteCard')}
             </button>
           </div>
         </div>

@@ -1,6 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@store/authStore';
 import { useTranslation } from '../../hooks/useTranslation';
+import AIAssistantWidget from '@components/ai/AIAssistantWidget';
 
 export default function DashboardLayout({ children }) {
   const { user, logout } = useAuthStore();
@@ -30,7 +31,7 @@ export default function DashboardLayout({ children }) {
                 <span>{t('appName')}</span>
               </Link>
               <button className="hidden sm:inline-flex items-center gap-1 rounded-full bg-white/5 px-3 py-1 text-[11px] font-medium text-emerald-50 hover:bg-white/10">
-                Tổ chức Công Việc
+                {t('organizationLabel')}
                 <span className="text-white/60">▾</span>
               </button>
             </div>
@@ -47,6 +48,14 @@ export default function DashboardLayout({ children }) {
                 <button className="px-3 py-1 rounded-full text-emerald-50/85 hover:bg-white/10">
                   {t('starred')}
                 </button>
+                {user?.role === 'admin' && (
+                  <Link
+                    to="/admin"
+                    className="px-3 py-1 rounded-full text-emerald-50/85 hover:bg-white/10"
+                  >
+                    {t('admin')}
+                  </Link>
+                )}
               </nav>
               <div className="flex-1 hidden sm:flex items-center">
                 <div className="w-full rounded-full bg-slate-900/40 border border-white/15 px-3 py-1.5 text-xs flex items-center gap-2 text-emerald-50/80">
@@ -117,6 +126,8 @@ export default function DashboardLayout({ children }) {
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {children}
       </main>
+
+      <AIAssistantWidget />
     </div>
   );
 }

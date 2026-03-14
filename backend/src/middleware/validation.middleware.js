@@ -235,6 +235,16 @@ const cardSchemas = {
       id: commonSchemas.objectId,
     }),
   }),
+
+  moveChecklistItem: z.object({
+    body: z.object({
+      targetCardId: commonSchemas.objectId,
+    }),
+    params: z.object({
+      id: commonSchemas.objectId,
+      itemId: commonSchemas.objectId,
+    }),
+  }),
 };
 
 module.exports = {
