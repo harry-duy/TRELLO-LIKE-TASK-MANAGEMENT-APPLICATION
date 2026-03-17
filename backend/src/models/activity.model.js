@@ -33,6 +33,7 @@ const activitySchema = new mongoose.Schema(
         'checklist_item_added',
         'checklist_item_completed',
         'checklist_item_uncompleted',
+        'checklist_item_moved',
         
         // List actions
         'list_created',
@@ -169,6 +170,7 @@ activitySchema.methods.formatMessage = function () {
     checklist_item_added: 'added a checklist item',
     checklist_item_completed: 'completed a checklist item',
     checklist_item_uncompleted: 'uncompleted a checklist item',
+    checklist_item_moved: `moved checklist item to ${this.metadata.toCardName || 'another card'}`,
     list_created: 'created list',
     list_updated: 'updated list',
     list_deleted: 'deleted list',

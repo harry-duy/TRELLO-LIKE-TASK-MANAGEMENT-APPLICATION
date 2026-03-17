@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '@store/authStore';
 import workspaceService from '@services/workspaceService';
+import { useTranslation } from '@hooks/useTranslation';
 
 export default function DashboardPage() {
   const { user } = useAuthStore();
+  const { t } = useTranslation();
   const [state, setState] = useState({
     status: 'loading',
     workspaces: [],
@@ -43,23 +45,27 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-white mb-4 heading-soft">Dashboard</h1>
+      <h1 className="text-2xl font-bold text-white mb-4 heading-soft">
+        {t('dashboardTitle')}
+      </h1>
       <p className="text-soft mb-6">
-        Hello, <strong>{user?.name || user?.email || 'User'}</strong>. Choose a
-        workspace or create a new one to get started.
+        {t('dashboardWelcome', {
+          name: user?.name || user?.email || t('defaultUser'),
+        })}
       </p>
 
       {state.status === 'loading' && (
         <div className="flex items-center gap-2 text-emerald-50/70 mb-4">
           <div className="spinner border-primary-600"></div>
-          Loading workspaces...
+          {t('loadingWorkspaces')}
         </div>
       )}
 
       {state.status === 'error' && (
         <div className="text-sm text-red-300 mb-4">
-          Could not load workspaces:{' '}
-          {state.error?.message || 'Something went wrong.'}
+          {t('loadWorkspacesError', {
+            message: state.error?.message || t('somethingWentWrong'),
+          })}
         </div>
       )}
 
@@ -81,7 +87,7 @@ export default function DashboardPage() {
               )}
             </div>
             <div className="text-xs text-emerald-100/60 mt-3">
-              Members: {workspace.members?.length || 0}
+              {t('membersCount', { count: workspace.members?.length || 0 })}
             </div>
           </Link>
         ))}
@@ -90,7 +96,7 @@ export default function DashboardPage() {
           to="/workspace/new"
           className="card card-hover flex items-center justify-center min-h-[120px] border-2 border-dashed border-white/20 text-emerald-50/70 hover:border-emerald-200 hover:text-emerald-100 bg-white/5"
         >
-          + Create new workspace
+          {t('createNewWorkspace')}
         </Link>
       </div>
     </div>

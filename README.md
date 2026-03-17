@@ -78,11 +78,11 @@ npm run dev:frontend  # Chỉ frontend
 ## 🎯 Features Checklist
 
 ### Core Features (Must Have)
-- [ ] Authentication (JWT + Refresh Token)
-- [ ] User Registration & Login
-- [ ] Workspace Management
+- [x] Authentication (JWT + Refresh Token)
+- [x] User Registration & Login
+- [x] Workspace Management
 - [ ] Board/List/Card CRUD
-- [ ] Drag & Drop (Cards between lists)
+- [x] Drag & Drop (Cards between lists)
 - [ ] Card Details (Assignees, Due Date, Labels, Checklist)
 - [ ] Comments on Cards
 - [ ] Real-time Updates (Socket.io)
@@ -91,6 +91,15 @@ npm run dev:frontend  # Chỉ frontend
 - [ ] Search & Filtering
 - [ ] Admin Dashboard
 - [ ] Testing (5-10 test cases)
+
+### Admin Features (Implemented)
+- [x] Phase 1 - User Management (list users, update role, activate/deactivate, delete with safety guards)
+- [x] Phase 1 - Admin bootstrap script (`npm run bootstrap:admin`)
+- [x] Phase 2 - Workspace & Board Super Access
+- [x] Phase 2 - Close/Reopen Board + Workspace Member Management
+- [x] Phase 3 - System Analytics (overview, trends) + System Activity Feed
+- [x] Phase 4 - System Resources (Cloudinary status/usage, upload policy)
+- [x] Phase 4 - System Logs Viewer (combined/error/exceptions/rejections)
 
 ### Enhancement Features (Should Have)
 - [ ] File Upload (Avatars, Attachments)

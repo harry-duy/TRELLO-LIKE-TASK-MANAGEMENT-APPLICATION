@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Activity = require('../models/activity.model');
 const { asyncHandler } = require('../middleware/errorHandler');
 const { AppError } = require('../middleware/errorHandler');
