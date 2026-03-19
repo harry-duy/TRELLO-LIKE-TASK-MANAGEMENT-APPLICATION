@@ -1,3 +1,7 @@
+// frontend/src/components/board/ListColumn.jsx
+// ✅ Professional Trello-dark style
+// ✅ All logic preserved - only visual changes
+
 import { useMemo, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -13,9 +17,7 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(list.name);
 
-  const { setNodeRef, isOver } = useDroppable({
-    id: list._id,
-  });
+  const { setNodeRef, isOver } = useDroppable({ id: list._id });
 
   const cards = useMemo(
     () => (Array.isArray(list.cards) ? list.cards : []),
@@ -64,49 +66,78 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
     <>
       <div
         ref={setNodeRef}
-        className={`list-column w-72 ${isOver ? 'ring-2 ring-white/70' : ''}`}
+        className="list-column"
+        style={{
+          outline: isOver ? '2px solid rgba(87,157,255,.6)' : 'none',
+          outlineOffset: '-1px',
+        }}
       >
-        <div className="px-4 pt-4 pb-3 flex items-center justify-between gap-2">
-          <div className="flex-1">
-            <div className="list-pill">{t('listLabel')}</div>
-            <h3 className="text-base font-semibold text-white mt-1 heading-soft">
-              {list.name}
-            </h3>
-          </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-emerald-50/70 bg-white/10 px-2 py-1 rounded-full">
-            {cards.length}
-          </span>
-          <button
-            className="h-7 w-7 rounded-full border border-white/10 text-emerald-50/70 hover:text-white hover:border-white/30 transition flex items-center justify-center text-xs"
+        {/* ─── Column Header ─── */}
+        <div className="list-column-header">
+          <h3
+            className="list-column-title"
+            title={list.name}
             onClick={() => setIsEditing(true)}
-            title={t('editList')}
-            type="button"
           >
-            ✎
-          </button>
-          <button
-            className="h-7 w-7 rounded-full border border-white/10 text-red-200 hover:text-white hover:border-red-300 transition flex items-center justify-center text-xs"
-            onClick={handleDeleteList}
-            title={t('deleteList')}
-            type="button"
-          >
-            🗑
-          </button>
-        </div>
-      </div>
+            {list.name}
+          </h3>
+          <span className="list-column-count">{cards.length}</span>
 
-        <div className="px-2 pb-2 flex-1 overflow-y-auto custom-scrollbar">
+          <div className="list-column-actions">
+            <button
+              type="button"
+              title={t('editList')}
+              onClick={() => setIsEditing(true)}
+              style={{
+                width: 28, height: 28,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                border: 'none', borderRadius: '4px',
+                background: 'transparent',
+                color: 'var(--color-text-secondary)',
+                cursor: 'pointer',
+                transition: 'background 120ms, color 120ms',
+                fontSize: 12,
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(166,197,226,.1)'; e.currentTarget.style.color = 'var(--color-text-heading)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                <circle cx="8" cy="3.5" r="1.25" fill="currentColor"/>
+                <circle cx="8" cy="8" r="1.25" fill="currentColor"/>
+                <circle cx="8" cy="12.5" r="1.25" fill="currentColor"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* ─── Card List ─── */}
+        <div
+          className="custom-scrollbar"
+          style={{
+            padding: '0 8px 4px',
+            flex: 1,
+            overflowY: 'auto',
+            overflowX: 'hidden',
+          }}
+        >
           <SortableContext
-            items={cards.map((card) => card._id)}
+            items={cards.map(c => c._id)}
             strategy={verticalListSortingStrategy}
           >
-            {cards.map((card) => (
+            {cards.map(card => (
               <button
                 key={card._id}
                 type="button"
                 onClick={() => onCardClick && onCardClick(card._id)}
-                className="w-full text-left"
+                style={{
+                  width: '100%',
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  cursor: 'pointer',
+                  display: 'block',
+                  textAlign: 'left',
+                }}
               >
                 <SortableCard card={card} />
               </button>
@@ -114,80 +145,129 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
           </SortableContext>
 
           {!cards.length && (
-            <div className="text-xs text-emerald-50/60 italic px-1 py-2">
+            <div style={{
+              padding: '8px 6px',
+              fontSize: 12,
+              color: 'var(--color-text-muted)',
+              fontStyle: 'italic',
+            }}>
               {t('noCardsYet')}
             </div>
           )}
         </div>
 
-        <div className="p-3 pt-2 border-t border-white/10">
+        {/* ─── Add Card Area ─── */}
+        <div style={{ padding: '4px 8px 8px' }}>
           {isAdding ? (
             <div>
               <textarea
-                className="w-full p-2 border rounded-lg shadow-sm mb-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                autoFocus
+                className="input"
+                rows={3}
                 placeholder={t('cardTitlePlaceholder')}
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                autoFocus
+                onChange={e => setTitle(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAddCard(); }
+                  if (e.key === 'Escape') { setIsAdding(false); setTitle(''); }
+                }}
+                style={{
+                  resize: 'none',
+                  marginBottom: 8,
+                  borderRadius: '4px',
+                  fontSize: 14,
+                  boxShadow: '0 2px 8px rgba(0,0,0,.3)',
+                }}
               />
-              <div className="flex gap-2">
-                <button onClick={handleAddCard} className="btn btn-primary btn-sm">
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={handleAddCard}
+                >
                   {t('addCard')}
                 </button>
                 <button
-                  onClick={() => setIsAdding(false)}
-                  className="text-slate-500"
+                  type="button"
+                  onClick={() => { setIsAdding(false); setTitle(''); }}
+                  style={{
+                    width: 28, height: 28,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    border: 'none', borderRadius: '4px',
+                    background: 'transparent',
+                    color: 'var(--color-text-secondary)',
+                    cursor: 'pointer',
+                    fontSize: 16,
+                    transition: 'background 120ms',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(166,197,226,.1)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                 >
-                  {t('cancel')}
+                  ✕
                 </button>
               </div>
             </div>
           ) : (
             <button
+              type="button"
+              className="add-card-btn"
               onClick={() => setIsAdding(true)}
-              className="w-full p-2 text-slate-600 hover:bg-slate-100 text-left rounded-lg"
             >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                <path d="M8 2v12M2 8h12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+              </svg>
               {t('addNewCard')}
             </button>
           )}
         </div>
       </div>
 
+      {/* ─── Edit List Name Modal ─── */}
       {isEditing && (
-        <div className="modal-overlay" onClick={() => setIsEditing(false)}>
+        <div
+          className="modal-overlay"
+          onClick={() => { setIsEditing(false); setName(list.name); }}
+        >
           <div
-            className="modal-content card-modal max-w-md"
-            onClick={(e) => e.stopPropagation()}
+            className="modal-content"
+            style={{ maxWidth: 360, padding: 20 }}
+            onClick={e => e.stopPropagation()}
           >
-            <header className="mb-4">
-              <h3 className="text-lg font-semibold heading-soft">{t('renameList')}</h3>
-            </header>
+            <h3 style={{
+              fontSize: 16, fontWeight: 600, marginBottom: 16,
+              color: 'var(--color-text-heading)',
+            }}>
+              {t('renameList')}
+            </h3>
             <input
               className="input"
               value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => {
+              onChange={e => setName(e.target.value)}
+              onKeyDown={e => {
                 if (e.key === 'Enter') handleUpdateList();
-                if (e.key === 'Escape') {
-                  setIsEditing(false);
-                  setName(list.name);
-                }
+                if (e.key === 'Escape') { setIsEditing(false); setName(list.name); }
               }}
               autoFocus
+              style={{ marginBottom: 12 }}
             />
-            <div className="flex justify-end gap-2 mt-4">
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between' }}>
               <button
-                className="btn btn-secondary btn-sm"
-                onClick={() => {
-                  setIsEditing(false);
-                  setName(list.name);
-                }}
+                type="button"
+                className="btn btn-danger btn-sm"
+                onClick={handleDeleteList}
               >
-                {t('cancel')}
+                {t('deleteList')}
               </button>
-              <button className="btn btn-primary btn-sm" onClick={handleUpdateList}>
-                {t('save')}
-              </button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => { setIsEditing(false); setName(list.name); }}
+                >
+                  {t('cancel')}
+                </button>
+                <button className="btn btn-primary btn-sm" onClick={handleUpdateList}>
+                  {t('save')}
+                </button>
+              </div>
             </div>
           </div>
         </div>

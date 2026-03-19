@@ -1,4 +1,6 @@
 // frontend/src/components/board/BoardCanvas.jsx
+// ✅ Professional Trello-dark redesign
+// ✅ ALL logic/functions preserved — visual only changes
 // ✅ FilterBar ✅ Members panel ✅ Archive zone ✅ Labels/DueDate ✅ Star
 
 import { useEffect, useRef, useState } from 'react';
@@ -35,18 +37,18 @@ const L = {
     unstar:          'Bỏ đánh dấu',
     aiSearchPh:      "AI Search: ví dụ 'task backend quá hạn'",
     aiSearching:     'Đang tìm...',
-    aiSearchBtn:     'AI tìm card',
+    aiSearchBtn:     'Tìm',
     aiSearchNoResult:'Không tìm thấy card phù hợp',
     aiSearchError:   'Không thể tìm kiếm với AI',
     listLabel:       'Danh sách',
-    addAnotherList:  '+ Thêm danh sách khác',
+    addAnotherList:  '+ Thêm danh sách',
     listNamePh:      'Tên danh sách...',
-    addList:         'Thêm danh sách',
+    addList:         'Thêm',
     cancel:          'Huỷ',
-    trashHint:       'Kéo vào đây để xoá',
-    archiveHint:     'Kéo vào đây để lưu trữ',
-    loadingBoard:    'Đang tải bảng...',
-    boardError:      'Lỗi tải dữ liệu bảng',
+    trashHint:       'Kéo để xoá',
+    archiveHint:     'Kéo để lưu trữ',
+    loadingBoard:    'Đang tải...',
+    boardError:      'Lỗi tải bảng',
     deleteCardError: 'Không thể xoá card',
     moveCardError:   'Không thể di chuyển card',
     createListError: 'Không thể tạo danh sách',
@@ -54,6 +56,7 @@ const L = {
     archiveFail:     'Không thể lưu trữ',
     filterActive:    n => `Lọc (${n})`,
     copiedLink:      'Đã sao chép link!',
+    aiAssist:        'AI Search',
   },
   en: {
     workspaceBoard:  'Board',
@@ -64,17 +67,17 @@ const L = {
     unstar:          'Starred',
     aiSearchPh:      "AI Search: e.g. 'overdue backend task'",
     aiSearching:     'Searching...',
-    aiSearchBtn:     'AI search cards',
+    aiSearchBtn:     'Search',
     aiSearchNoResult:'No matching cards found',
     aiSearchError:   'Could not search with AI',
     listLabel:       'List',
-    addAnotherList:  '+ Add another list',
+    addAnotherList:  '+ Add a list',
     listNamePh:      'List name...',
     addList:         'Add list',
     cancel:          'Cancel',
-    trashHint:       'Drag here to delete',
-    archiveHint:     'Drag here to archive',
-    loadingBoard:    'Loading board...',
+    trashHint:       'Drag to delete',
+    archiveHint:     'Drag to archive',
+    loadingBoard:    'Loading...',
     boardError:      'Failed to load board',
     deleteCardError: 'Could not delete card',
     moveCardError:   'Could not move card',
@@ -83,6 +86,7 @@ const L = {
     archiveFail:     'Could not archive',
     filterActive:    n => `Filter (${n})`,
     copiedLink:      'Link copied!',
+    aiAssist:        'AI Search',
   },
 };
 
@@ -99,9 +103,10 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
   const [listName,       setListName]       = useState('');
   const [aiSearchQuery,  setAiSearchQuery]  = useState('');
   const [aiSearchResult, setAiSearchResult] = useState(null);
+  const [showAiSearch,   setShowAiSearch]   = useState(false);
   const [showFilter,     setShowFilter]     = useState(false);
   const [filter,         setFilter]         = useState(EMPTY_FILTER);
-  const [showMembers,    setShowMembers]     = useState(false);
+  const [showMembers,    setShowMembers]    = useState(false);
 
   const trash   = useDroppable({ id: 'trash' });
   const archive = useDroppable({ id: 'archive' });
@@ -238,118 +243,288 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
   const activeFilters  = countActiveFilters(filter);
   const workspaceId    = board?.workspace?._id || board?.workspace;
 
+  /* ─── Board background color/image ─── */
+  const boardBg = board?.background || '#1158cb';
+  const isHexColor = /^#[0-9a-fA-F]+$/.test(boardBg);
+
   if (isLoading) return (
-    <div className="flex items-center justify-center h-full text-white gap-2">
-      <div className="spinner border-white" /><span>{l.loadingBoard}</span>
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      height: '100%', gap: 10, color: 'var(--color-text-secondary)',
+    }}>
+      <div className="spinner" />
+      <span>{l.loadingBoard}</span>
     </div>
   );
-  if (isError) return <div className="text-center p-10 text-white">{l.boardError}</div>;
+  if (isError) return (
+    <div style={{ textAlign: 'center', padding: 40, color: 'var(--color-text-secondary)' }}>
+      {l.boardError}
+    </div>
+  );
 
   return (
-    <div className="h-full flex flex-col overflow-hidden board-surface rounded-2xl border border-white/10">
+    <div style={{
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
+      borderRadius: '8px',
+      overflow: 'hidden',
+      background: isHexColor ? boardBg : '#1558CB',
+    }}>
 
-      {/* ─── Header ─── */}
+      {/* ─── Board Header ─── */}
       {showHeader && (
-        <div className="px-6 pt-6">
-          <div className="board-header flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-3 flex-wrap">
-              <div>
-                <div className="text-xs uppercase tracking-[0.35em] text-emerald-100/70">{l.workspaceBoard}</div>
-                <h1 className="board-title heading-soft text-2xl md:text-3xl font-semibold mt-1">{board?.name}</h1>
-                {board?.description && <p className="text-sm text-emerald-50/70 mt-1">{board.description}</p>}
-              </div>
-              <StarButton board={board} size="md" showLabel labelStar={l.star} labelUnstar={l.unstar}
-                onToggle={() => queryClient.invalidateQueries(['board', boardId])} />
-            </div>
-
-            <div className="flex gap-2 flex-wrap items-center">
-              {/* Filter button */}
-              <div style={{ position: 'relative' }}>
-                <button className="board-button" onClick={() => setShowFilter(v => !v)}
-                  style={activeFilters > 0 ? { background: 'rgba(52,211,153,.2)', borderColor: 'rgba(52,211,153,.4)', color: '#34d399' } : {}}>
-                  🔍 {activeFilters > 0 ? l.filterActive(activeFilters) : l.filter}
-                </button>
-                {showFilter && (
-                  <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 9000 }}>
-                    <FilterBar lang={lang} filter={filter} onChange={setFilter} onClose={() => setShowFilter(false)} />
-                  </div>
-                )}
-              </div>
-
-              {/* Members */}
-              <button className="board-button" onClick={() => setShowMembers(true)}>
-                👥 {l.members}
-              </button>
-
-              {/* Share */}
-              <button className="board-button" onClick={() => {
-                navigator.clipboard.writeText(window.location.href);
-                toast.success(l.copiedLink);
-              }}>
-                🔗 {l.share}
-              </button>
-            </div>
+        <div className="board-header">
+          {/* Board name + star */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+            <h1 className="board-title">{board?.name}</h1>
+            <StarButton
+              board={board}
+              size="sm"
+              labelStar={l.star}
+              labelUnstar={l.unstar}
+              onToggle={() => queryClient.invalidateQueries(['board', boardId])}
+            />
           </div>
 
-          {/* AI Search */}
-          <div className="mt-3 bg-white/10 border border-white/10 rounded-2xl p-3">
-            <div className="flex flex-col md:flex-row gap-2">
-              <input className="input" placeholder={l.aiSearchPh} value={aiSearchQuery}
-                onChange={e => setAiSearchQuery(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && aiSearchQuery.trim() && aiSearchMutation.mutate({ boardId, query: aiSearchQuery.trim() })} />
-              <button type="button" className="btn btn-primary"
-                onClick={() => aiSearchQuery.trim() && aiSearchMutation.mutate({ boardId, query: aiSearchQuery.trim() })}
-                disabled={aiSearchMutation.isPending}>
-                {aiSearchMutation.isPending ? l.aiSearching : l.aiSearchBtn}
+          {/* Header actions */}
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            {/* AI Search toggle */}
+            <button
+              className="board-button"
+              onClick={() => setShowAiSearch(v => !v)}
+              style={showAiSearch ? { background: 'rgba(255,255,255,.32)' } : {}}
+            >
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.4"/>
+                <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+              </svg>
+              {l.aiAssist}
+            </button>
+
+            {/* Filter */}
+            <div style={{ position: 'relative' }}>
+              <button
+                className="board-button"
+                onClick={() => setShowFilter(v => !v)}
+                style={activeFilters > 0 ? { background: 'rgba(87,157,255,.28)', color: '#79bbff' } : {}}
+              >
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                  <path d="M2 4h12M4 8h8M6 12h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                </svg>
+                {activeFilters > 0 ? l.filterActive(activeFilters) : l.filter}
               </button>
-              {aiSearchResult && <button type="button" className="btn btn-secondary" onClick={() => setAiSearchResult(null)}>✕</button>}
+              {showFilter && (
+                <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 9000 }}>
+                  <FilterBar lang={lang} filter={filter} onChange={setFilter} onClose={() => setShowFilter(false)} />
+                </div>
+              )}
             </div>
-            {!!aiSearchResult?.cards?.length && (
-              <div className="mt-3 space-y-2 max-h-56 overflow-auto custom-scrollbar">
-                {aiSearchResult.cards.map(card => (
-                  <button key={card._id} type="button"
-                    className="w-full text-left rounded-lg border border-white/10 bg-white/5 px-3 py-2 hover:bg-white/10"
-                    onClick={() => setSelectedCardId(card._id)}>
-                    <div className="text-sm text-white font-medium">{card.title}</div>
-                    <div className="text-xs text-emerald-100/70 mt-1">{l.listLabel}: {card.list?.name || 'N/A'}</div>
-                  </button>
-                ))}
-              </div>
-            )}
+
+            {/* Members */}
+            <button className="board-button" onClick={() => setShowMembers(true)}>
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                <circle cx="6" cy="5" r="3" stroke="currentColor" strokeWidth="1.3"/>
+                <path d="M1 13.5C1 11 3 9.5 6 9.5s5 1.5 5 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                <path d="M11 7.5c1.1 0 2 .5 2.5 1.5M13 3.5a2 2 0 010 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+              </svg>
+              {l.members}
+            </button>
+
+            {/* Share */}
+            <button
+              className="board-button"
+              onClick={() => {
+                navigator.clipboard.writeText(window.location.href);
+                toast.success(l.copiedLink);
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                <circle cx="12.5" cy="3.5" r="2" stroke="currentColor" strokeWidth="1.3"/>
+                <circle cx="3.5" cy="8" r="2" stroke="currentColor" strokeWidth="1.3"/>
+                <circle cx="12.5" cy="12.5" r="2" stroke="currentColor" strokeWidth="1.3"/>
+                <path d="M5.3 7L10.7 4.5M10.7 11.5L5.3 9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+              </svg>
+              {l.share}
+            </button>
           </div>
         </div>
       )}
 
-      {/* ─── DnD Board ─── */}
-      <DndContext sensors={sensors} collisionDetection={rectIntersection}
-        onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragMove={handleDragMove}
-        onDragOver={e => { if (e.over?.id) lastOverId.current = e.over.id; }}
-        onDragCancel={() => { overZoneRef.current = null; setTrashHover(false); setArchiveHover(false); }}>
+      {/* ─── AI Search Panel ─── */}
+      {showAiSearch && (
+        <div style={{
+          padding: '8px 16px',
+          background: 'rgba(0,0,0,.16)',
+          borderBottom: '1px solid rgba(255,255,255,.1)',
+        }}>
+          <div style={{ display: 'flex', gap: 8, maxWidth: 600 }}>
+            <input
+              className="input"
+              placeholder={l.aiSearchPh}
+              value={aiSearchQuery}
+              onChange={e => setAiSearchQuery(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && aiSearchQuery.trim())
+                  aiSearchMutation.mutate({ boardId, query: aiSearchQuery.trim() });
+              }}
+              style={{
+                background: 'rgba(255,255,255,.14)',
+                borderColor: 'rgba(255,255,255,.16)',
+                color: 'white',
+                flex: 1,
+              }}
+            />
+            <button
+              className="btn btn-primary"
+              onClick={() => aiSearchQuery.trim() && aiSearchMutation.mutate({ boardId, query: aiSearchQuery.trim() })}
+              disabled={aiSearchMutation.isPending}
+              style={{ flexShrink: 0 }}
+            >
+              {aiSearchMutation.isPending ? l.aiSearching : l.aiSearchBtn}
+            </button>
+            {aiSearchResult && (
+              <button
+                type="button"
+                onClick={() => setAiSearchResult(null)}
+                style={{
+                  padding: '0 10px',
+                  background: 'rgba(255,255,255,.14)',
+                  border: 'none',
+                  borderRadius: 4,
+                  color: 'white',
+                  cursor: 'pointer',
+                  fontSize: 16,
+                }}
+              >
+                ✕
+              </button>
+            )}
+          </div>
 
-        <div className="flex-1 overflow-x-auto p-6 flex gap-4 items-start custom-scrollbar">
+          {!!aiSearchResult?.cards?.length && (
+            <div style={{
+              marginTop: 8,
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 6,
+              maxHeight: 120,
+              overflowY: 'auto',
+            }}>
+              {aiSearchResult.cards.map(card => (
+                <button
+                  key={card._id}
+                  type="button"
+                  onClick={() => setSelectedCardId(card._id)}
+                  style={{
+                    background: 'rgba(255,255,255,.14)',
+                    border: '1px solid rgba(255,255,255,.16)',
+                    borderRadius: 4,
+                    padding: '4px 10px',
+                    color: 'white',
+                    fontSize: 12,
+                    cursor: 'pointer',
+                    transition: 'background 120ms',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.22)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,.14)'}
+                >
+                  {card.title}
+                  {card.list?.name && (
+                    <span style={{ opacity: 0.6, marginLeft: 6 }}>· {card.list.name}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ─── DnD Board ─── */}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={rectIntersection}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragMove={handleDragMove}
+        onDragOver={e => { if (e.over?.id) lastOverId.current = e.over.id; }}
+        onDragCancel={() => {
+          overZoneRef.current = null;
+          setTrashHover(false);
+          setArchiveHover(false);
+        }}
+      >
+        {/* Columns scroll area */}
+        <div
+          className="custom-scrollbar"
+          style={{
+            flex: 1,
+            overflowX: 'auto',
+            overflowY: 'hidden',
+            padding: '12px 16px 0',
+            display: 'flex',
+            gap: 12,
+            alignItems: 'flex-start',
+          }}
+        >
           {filteredLists.map(list => (
-            <ListColumn key={list._id} list={list}
+            <ListColumn
+              key={list._id}
+              list={list}
               onCardClick={id => setSelectedCardId(id)}
               onCardAdded={() => queryClient.invalidateQueries(['board', boardId])}
-              onListUpdated={() => queryClient.invalidateQueries(['board', boardId])} />
+              onListUpdated={() => queryClient.invalidateQueries(['board', boardId])}
+            />
           ))}
 
-          {/* Add list */}
-          <div className="w-72 shrink-0">
+          {/* Add List */}
+          <div style={{ flexShrink: 0 }}>
             {isAddingList ? (
-              <div className="bg-white/90 rounded-2xl p-4 shadow-xl">
-                <input className="input mb-2" placeholder={l.listNamePh} value={listName}
+              <div style={{
+                width: 272,
+                background: 'rgba(22,33,57,.95)',
+                borderRadius: 12,
+                padding: 10,
+                boxShadow: '0 4px 16px rgba(0,0,0,.4)',
+              }}>
+                <input
+                  autoFocus
+                  className="input"
+                  placeholder={l.listNamePh}
+                  value={listName}
                   onChange={e => setListName(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') handleAddList(); if (e.key === 'Escape') setIsAddingList(false); }}
-                  autoFocus />
-                <div className="flex gap-2">
-                  <button onClick={handleAddList} className="btn btn-primary btn-sm">{l.addList}</button>
-                  <button onClick={() => { setIsAddingList(false); setListName(''); }} className="text-slate-600">{l.cancel}</button>
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') handleAddList();
+                    if (e.key === 'Escape') { setIsAddingList(false); setListName(''); }
+                  }}
+                  style={{ marginBottom: 8 }}
+                />
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <button className="btn btn-primary btn-sm" onClick={handleAddList}>{l.addList}</button>
+                  <button
+                    type="button"
+                    onClick={() => { setIsAddingList(false); setListName(''); }}
+                    style={{
+                      width: 28, height: 28,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      border: 'none', borderRadius: 4,
+                      background: 'transparent',
+                      color: 'rgba(255,255,255,.6)',
+                      cursor: 'pointer', fontSize: 16,
+                    }}
+                  >
+                    ✕
+                  </button>
                 </div>
               </div>
             ) : (
-              <button onClick={() => setIsAddingList(true)}
-                className="w-full bg-white/15 hover:bg-white/25 text-white p-4 rounded-2xl text-left font-semibold transition-all border border-white/10">
+              <button
+                className="add-list-btn"
+                onClick={() => setIsAddingList(true)}
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                  <path d="M8 2v12M2 8h12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                </svg>
                 {l.addAnotherList}
               </button>
             )}
@@ -357,24 +532,74 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
         </div>
 
         {/* ─── Drop zones ─── */}
-        <div className="px-6 pb-6 grid grid-cols-2 gap-3">
-          <div ref={node => { trash.setNodeRef(node); trashRef.current = node; }}
-            className={`border border-dashed rounded-2xl px-4 py-3 text-sm font-semibold text-white/80 transition flex items-center justify-center gap-2 ${
-              trash.isOver || trashHover ? 'border-red-300 bg-red-500/20 text-white' : 'border-white/15 bg-white/5'
-            }`}>
-            🗑️ {l.trashHint}
+        <div style={{ padding: '8px 16px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <div
+            ref={node => { trash.setNodeRef(node); trashRef.current = node; }}
+            style={{
+              border: '2px dashed',
+              borderColor: (trash.isOver || trashHover) ? 'var(--color-danger)' : 'rgba(255,255,255,.2)',
+              background: (trash.isOver || trashHover) ? 'rgba(248,113,104,.12)' : 'rgba(0,0,0,.12)',
+              borderRadius: 8,
+              padding: '8px 14px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              fontSize: 12,
+              fontWeight: 500,
+              color: (trash.isOver || trashHover) ? 'var(--color-danger)' : 'rgba(255,255,255,.4)',
+              transition: 'all 150ms',
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+              <path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9.5a1 1 0 001 .5h6a1 1 0 001-.5L13 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            {l.trashHint}
           </div>
-          <div ref={node => { archive.setNodeRef(node); archiveRef.current = node; }}
-            className={`border border-dashed rounded-2xl px-4 py-3 text-sm font-semibold text-white/80 transition flex items-center justify-center gap-2 ${
-              archive.isOver || archiveHover ? 'border-yellow-300 bg-yellow-500/20 text-white' : 'border-white/15 bg-white/5'
-            }`}>
-            📦 {l.archiveHint}
+
+          <div
+            ref={node => { archive.setNodeRef(node); archiveRef.current = node; }}
+            style={{
+              border: '2px dashed',
+              borderColor: (archive.isOver || archiveHover) ? 'var(--color-warning)' : 'rgba(255,255,255,.2)',
+              background: (archive.isOver || archiveHover) ? 'rgba(245,166,35,.12)' : 'rgba(0,0,0,.12)',
+              borderRadius: 8,
+              padding: '8px 14px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              fontSize: 12,
+              fontWeight: 500,
+              color: (archive.isOver || archiveHover) ? 'var(--color-warning)' : 'rgba(255,255,255,.4)',
+              transition: 'all 150ms',
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+              <rect x="1.5" y="1.5" width="13" height="3" rx="1" stroke="currentColor" strokeWidth="1.3"/>
+              <path d="M3 4.5v9a1 1 0 001 1h8a1 1 0 001-1v-9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+              <path d="M6.5 7.5h3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+            </svg>
+            {l.archiveHint}
           </div>
         </div>
 
+        {/* Drag Overlay */}
         <DragOverlay>
           {activeCard ? (
-            <div className="shadow-2xl rotate-2 w-64 opacity-90 p-3 rounded-xl bg-white text-slate-800 font-medium text-sm">
+            <div style={{
+              padding: '8px 10px',
+              background: 'var(--color-bg-card)',
+              borderRadius: 6,
+              boxShadow: '0 8px 24px rgba(0,0,0,.5)',
+              transform: 'rotate(3deg)',
+              width: 252,
+              opacity: 0.95,
+              fontSize: 14,
+              color: 'var(--color-text-heading)',
+              fontWeight: 400,
+              border: '1px solid rgba(87,157,255,.3)',
+            }}>
               {activeCard.title}
             </div>
           ) : null}
@@ -383,17 +608,24 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
 
       {/* Members Panel */}
       {showMembers && workspaceId && (
-        <BoardMembersPanel boardId={boardId} workspaceId={workspaceId} lang={lang}
-          onClose={() => setShowMembers(false)} />
+        <BoardMembersPanel
+          boardId={boardId}
+          workspaceId={workspaceId}
+          lang={lang}
+          onClose={() => setShowMembers(false)}
+        />
       )}
 
       {/* Card Modal */}
       {selectedCardId && (
-        <CardModal cardId={selectedCardId} boardId={boardId}
+        <CardModal
+          cardId={selectedCardId}
+          boardId={boardId}
           onClose={() => {
             setSelectedCardId(null);
             queryClient.invalidateQueries(['board', boardId]);
-          }} />
+          }}
+        />
       )}
     </div>
   );

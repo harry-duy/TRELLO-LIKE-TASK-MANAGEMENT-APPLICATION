@@ -1,5 +1,7 @@
 // frontend/src/components/board/SortableCard.jsx
+// ✅ Professional Trello-style card - dark theme, clean layout
 // ✅ Labels + DueDateBadge + Checklist progress + Archive
+// NOTE: Only visual changes - all props/callbacks preserved
 
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -17,7 +19,7 @@ export function SortableCard({ card, onClick }) {
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.45 : 1,
+    opacity: isDragging ? 0 : 1,
   };
 
   const labels    = card.labels || [];
@@ -35,57 +37,70 @@ export function SortableCard({ card, onClick }) {
       {...attributes}
       {...listeners}
       onClick={() => onClick && onClick(card._id)}
-      className="card-item mb-2 cursor-pointer select-none"
+      className="card-item"
     >
-      {/* ─── Labels row ─── */}
+      {/* ─── Label strips at top ─── */}
       {labels.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+        <div className="card-labels">
           {labels.map((raw, i) => (
             <LabelChip key={i} raw={raw} size="sm" />
           ))}
         </div>
       )}
 
-      {/* ─── Title ─── */}
-      <p style={{ fontSize: 13, fontWeight: 500, color: '#1e293b', lineHeight: 1.4, margin: 0 }}>
-        {card.title}
-      </p>
+      {/* ─── Card Title ─── */}
+      <p className="card-title">{card.title}</p>
 
       {/* ─── Checklist progress bar ─── */}
       {total > 0 && (
         <div style={{ marginTop: 8 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
-            <span style={{ fontSize: 10, color: '#64748b' }}>{done}/{total}</span>
-            <span style={{ fontSize: 10, color: '#64748b' }}>{progress}%</span>
-          </div>
-          <div style={{ height: 4, borderRadius: 99, background: '#e2e8f0', overflow: 'hidden' }}>
+          <div style={{
+            height: 4, borderRadius: '999px',
+            background: 'rgba(166,197,226,.1)',
+            overflow: 'hidden',
+          }}>
             <div style={{
-              height: '100%', borderRadius: 99,
+              height: '100%',
               width: `${progress}%`,
-              background: progress === 100 ? '#22c55e' : '#3b82f6',
-              transition: 'width .3s',
+              borderRadius: '999px',
+              background: progress === 100 ? '#4bce97' : '#579dff',
+              transition: 'width 0.3s ease',
             }} />
+          </div>
+          <div style={{
+            display: 'flex', justifyContent: 'space-between',
+            marginTop: 3, fontSize: 10,
+            color: progress === 100 ? '#4bce97' : 'var(--color-text-muted)',
+            fontWeight: 500,
+          }}>
+            <span>{done}/{total}</span>
+            <span>{progress}%</span>
           </div>
         </div>
       )}
 
-      {/* ─── Footer: due date + meta ─── */}
+      {/* ─── Footer: due date + meta badges ─── */}
       {(card.dueDate || commentCount > 0 || attachmentCount > 0) && (
-        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+        <div className="card-meta">
           {card.dueDate && (
             <DueDateBadge dueDate={card.dueDate} isCompleted={card.isCompleted} lang={lang} />
           )}
           {commentCount > 0 && (
-            <span style={{ fontSize: 11, color: '#64748b', display: 'flex', alignItems: 'center', gap: 3 }}>
-              <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
-                <path d="M14 9.5a1 1 0 01-1 1H5l-3 2.5V3a1 1 0 011-1h10a1 1 0 011 1v6.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
+            <span className="card-meta-badge">
+              <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
+                <path d="M14 9.5a1 1 0 01-1 1H5l-3 2.5V3a1 1 0 011-1h10a1 1 0 011 1v6.5z"
+                  stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
               </svg>
               {commentCount}
             </span>
           )}
           {attachmentCount > 0 && (
-            <span style={{ fontSize: 11, color: '#64748b', display: 'flex', alignItems: 'center', gap: 3 }}>
-              📎 {attachmentCount}
+            <span className="card-meta-badge">
+              <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
+                <path d="M13.5 8l-5.5 5.5a3.5 3.5 0 01-4.95-4.95l6-6a2 2 0 012.83 2.83L6.4 10.8a.5.5 0 01-.71-.71L10.5 5.3"
+                  stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+              </svg>
+              {attachmentCount}
             </span>
           )}
         </div>
