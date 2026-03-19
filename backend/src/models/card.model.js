@@ -213,6 +213,28 @@ cardSchema.methods.toggleChecklistItem = function (itemId) {
   return this.save();
 };
 
+// Instance method: Move checklist item to another card
+cardSchema.methods.moveChecklistItemToCard = async function (itemId, targetCard) {
+  const item = this.checklist.id(itemId);
+  if (!item) throw new Error('Checklist item not found');
+
+  const movedItemData = {
+    text: item.text,
+    completed: item.completed,
+    completedAt: item.completedAt,
+  };
+
+  targetCard.checklist.push(movedItemData);
+  const movedItem = targetCard.checklist[targetCard.checklist.length - 1];
+
+  this.checklist.pull({ _id: itemId });
+
+  await targetCard.save();
+  await this.save();
+
+  return movedItem;
+};
+
 // Instance method: Add attachment
 cardSchema.methods.addAttachment = function (attachment) {
   this.attachments.push(attachment);

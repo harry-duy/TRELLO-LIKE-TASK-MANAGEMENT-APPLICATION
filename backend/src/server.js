@@ -1,4 +1,6 @@
 require('dotenv').config();
+const passport = require('./config/passport');
+
 // --- Debugging Logs ---
 console.log('--- Starting Server ---');
 console.log(`[DEBUG] NODE_ENV: ${process.env.NODE_ENV}`);
@@ -25,6 +27,8 @@ const boardRoutes = require('./routes/board.routes');
 const listRoutes = require('./routes/list.routes');
 const cardRoutes = require('./routes/card.routes');
 const activityRoutes = require('./routes/activity.routes');
+const adminRoutes = require('./routes/admin.routes');
+const aiRoutes = require('./routes/ai.routes');
 
 const app = express();
 const server = http.createServer(app);
@@ -59,6 +63,7 @@ app.use(
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
+app.use(passport.initialize());
 
 // Logging Middleware
 if (process.env.NODE_ENV === 'development') {
@@ -83,6 +88,8 @@ app.use('/api/boards', boardRoutes);
 app.use('/api/lists', listRoutes);
 app.use('/api/cards', cardRoutes);
 app.use('/api/activities', activityRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/ai', aiRoutes);
 
 // 404 Handler
 app.use('*', (req, res) => {
@@ -138,20 +145,22 @@ const startServer = async () => {
   }
 };
 
-startServer();
+if (require.main === module) {
+  startServer();
 
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err) => {
-  console.error('UNHANDLED REJECTION! 💥 Shutting down...', err);
-  server.close(() => {
+  // Handle unhandled promise rejections
+  process.on('unhandledRejection', (err) => {
+    console.error('UNHANDLED REJECTION! 💥 Shutting down...', err);
+    server.close(() => {
+      process.exit(1);
+    });
+  });
+
+  // Handle uncaught exceptions
+  process.on('uncaughtException', (err) => {
+    console.error('UNCAUGHT EXCEPTION! 💥 Shutting down...', err);
     process.exit(1);
   });
-});
+}
 
-// Handle uncaught exceptions
-process.on('uncaughtException', (err) => {
-  console.error('UNCAUGHT EXCEPTION! 💥 Shutting down...', err);
-  process.exit(1);
-});
-
-module.exports = { app, server, io };
+module.exports = { app, server, io, startServer };

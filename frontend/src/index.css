@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -8,12 +10,21 @@
   }
 
   body {
-    @apply bg-gray-50 text-gray-900 antialiased;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+    @apply bg-slate-950 text-gray-900 antialiased;
+    font-family: 'DM Sans', 'Segoe UI', sans-serif;
   }
 
   html, body, #root {
     @apply h-full;
+  }
+
+  :root {
+    --board-ink: 16 24 39;
+    --board-emerald: 6 95 88;
+    --board-mint: 13 148 136;
+    --board-ocean: 15 118 110;
+    --board-fog: 226 232 240;
+    --board-soft: 248 250 252;
   }
 }
 
@@ -45,7 +56,7 @@
 
   /* Input Styles */
   .input {
-    @apply w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
+    @apply w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
   }
 
   .input-error {
@@ -61,6 +72,51 @@
     @apply transition-shadow duration-200 hover:shadow-card-hover;
   }
 
+  .board-surface {
+    background: radial-gradient(circle at top left, rgba(56, 189, 248, 0.25), transparent 40%),
+      radial-gradient(circle at 35% 20%, rgba(45, 212, 191, 0.18), transparent 38%),
+      radial-gradient(circle at top right, rgba(16, 185, 129, 0.22), transparent 35%),
+      linear-gradient(135deg, rgba(10, 37, 64, 0.98), rgba(8, 61, 57, 0.98));
+  }
+
+  .board-header {
+    @apply backdrop-blur bg-white/10 border border-white/10 rounded-2xl px-6 py-4 text-white shadow-[0_20px_60px_rgba(0,0,0,0.35)];
+  }
+
+  .board-title {
+    font-family: 'Space Grotesk', 'DM Sans', sans-serif;
+    letter-spacing: -0.02em;
+  }
+
+  .list-column {
+    @apply bg-white/10 border border-white/10 rounded-2xl shadow-[0_18px_50px_rgba(0,0,0,0.35)] flex flex-col max-h-full backdrop-blur;
+  }
+
+  .list-pill {
+    @apply text-xs uppercase tracking-[0.2em] text-emerald-600 font-semibold;
+  }
+
+  .card-item {
+    @apply bg-white/95 rounded-2xl border border-slate-100 shadow-[0_10px_25px_rgba(15,23,42,0.12)] px-3 py-2 text-slate-900 transition hover:-translate-y-0.5 hover:shadow-[0_16px_30px_rgba(15,23,42,0.18)];
+  }
+
+  .board-button {
+    @apply text-sm font-semibold px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/15 transition;
+  }
+
+  .heading-soft {
+    font-family: 'Space Grotesk', 'DM Sans', sans-serif;
+    letter-spacing: -0.01em;
+  }
+
+  .panel-soft {
+    @apply bg-white/10 border border-white/10 rounded-2xl shadow-[0_16px_40px_rgba(0,0,0,0.32)];
+  }
+
+  .text-soft {
+    @apply text-emerald-50/70;
+  }
+
   /* Label Styles */
   .label {
     @apply px-2 py-1 rounded text-xs font-medium text-white;
@@ -73,11 +129,22 @@
 
   /* Modal Overlay */
   .modal-overlay {
-    @apply fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50;
+    @apply fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-3 backdrop-blur-sm sm:p-6;
   }
 
   .modal-content {
-    @apply bg-white rounded-lg shadow-modal max-w-lg w-full mx-4 animate-scale-in;
+    @apply w-full max-w-lg animate-scale-in rounded-lg bg-white shadow-modal;
+    max-height: calc(100vh - 1.5rem);
+  }
+
+  .card-modal {
+    @apply overflow-x-hidden overflow-y-auto rounded-2xl border border-white/10 bg-slate-900/95 text-white shadow-2xl;
+  }
+
+  .card-modal input,
+  .card-modal textarea,
+  .card-modal select {
+    @apply bg-white/10 text-white border border-white/10 placeholder-white/60;
   }
 
   /* Scrollbar Styles */
