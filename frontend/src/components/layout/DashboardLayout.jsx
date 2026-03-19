@@ -11,7 +11,6 @@ import workspaceService from '@services/workspaceService';
 import boardService from '@services/boardService';
 import apiClient from '@config/api';
 import toast from 'react-hot-toast';
-import { StarredBoardsList } from '@components/board/StarButton';
 
 /* ═══════════════════════════════════════════════
    i18n dictionary — TẤT CẢ text trong layout
