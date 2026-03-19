@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import authService from '@services/authService';
 import toast from 'react-hot-toast';
+import { useTranslation } from '@hooks/useTranslation';
 
 export default function ResetPasswordPage() {
+  const { t } = useTranslation();
   const { token } = useParams();
   const navigate = useNavigate();
 
@@ -15,22 +17,22 @@ export default function ResetPasswordPage() {
     e.preventDefault();
 
     if (!token) {
-      toast.error('Link đặt lại mật khẩu không hợp lệ');
+      toast.error(t('invalidResetLink'));
       return;
     }
 
     if (!password || !confirmPassword) {
-      toast.error('Vui lòng nhập đầy đủ mật khẩu');
+      toast.error(t('passwordRequired'));
       return;
     }
 
     if (password.length < 8) {
-      toast.error('Mật khẩu tối thiểu 8 ký tự');
+      toast.error(t('passwordMinLength'));
       return;
     }
 
     if (password !== confirmPassword) {
-      toast.error('Mật khẩu xác nhận không khớp');
+      toast.error(t('passwordMismatch'));
       return;
     }
 
@@ -38,10 +40,10 @@ export default function ResetPasswordPage() {
 
     try {
       await authService.resetPassword(token, password);
-      toast.success('Đặt lại mật khẩu thành công');
+      toast.success(t('resetPasswordSuccess'));
       navigate('/login');
     } catch (err) {
-      toast.error(err?.message || 'Không thể đặt lại mật khẩu');
+      toast.error(err?.message || t('resetPasswordError'));
     } finally {
       setIsLoading(false);
     }
@@ -49,11 +51,11 @@ export default function ResetPasswordPage() {
 
   return (
     <>
-      <h1 className="text-xl font-bold text-gray-900 mb-4">Đặt lại mật khẩu</h1>
+      <h1 className="text-xl font-bold text-gray-900 mb-4">{t('resetPasswordTitle')}</h1>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-            Mật khẩu mới
+            {t('newPasswordLabel')}
           </label>
           <input
             id="password"
@@ -61,7 +63,7 @@ export default function ResetPasswordPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className="input"
-            placeholder="Tối thiểu 8 ký tự"
+            placeholder={t('passwordMinPlaceholder')}
             autoComplete="new-password"
             disabled={isLoading}
           />
@@ -69,7 +71,7 @@ export default function ResetPasswordPage() {
 
         <div>
           <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1">
-            Xác nhận mật khẩu mới
+            {t('confirmNewPasswordLabel')}
           </label>
           <input
             id="confirmPassword"
@@ -84,13 +86,13 @@ export default function ResetPasswordPage() {
         </div>
 
         <button type="submit" disabled={isLoading} className="btn btn-primary w-full">
-          {isLoading ? 'Đang cập nhật...' : 'Xác nhận'}
+          {isLoading ? t('resettingPassword') : t('resetPasswordButton')}
         </button>
       </form>
 
       <p className="mt-4 text-center text-sm text-gray-600">
         <Link to="/login" className="text-blue-600 font-medium hover:underline">
-          Quay lại đăng nhập
+          {t('authBackToLogin')}
         </Link>
       </p>
     </>

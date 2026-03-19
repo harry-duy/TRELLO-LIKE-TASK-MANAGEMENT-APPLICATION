@@ -147,23 +147,23 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
 
     try {
       queryClient.setQueryData(['board', boardId], (prev) => {
-        if (!prev || !prev.data && !prev.lists) return prev;
+        if (!prev || (!prev.data && !prev.lists)) return prev;
         const boardData = prev.lists ? prev : prev.data;
         if (!boardData) return prev;
 
         const cloned = {
           ...boardData,
-          lists: boardData.lists.map((l) => ({
-            ...l,
-            cards: Array.isArray(l.cards) ? [...l.cards] : [],
+          lists: boardData.lists.map((list) => ({
+            ...list,
+            cards: Array.isArray(list.cards) ? [...list.cards] : [],
           })),
         };
 
-        const fromList = cloned.lists.find((l) => l._id === fromListId);
-        const toList = cloned.lists.find((l) => l._id === toListId);
+        const fromList = cloned.lists.find((list) => list._id === fromListId);
+        const toList = cloned.lists.find((list) => list._id === toListId);
         if (!fromList || !toList) return prev;
 
-        const idx = fromList.cards.findIndex((c) => c._id === cardId);
+        const idx = fromList.cards.findIndex((card) => card._id === cardId);
         if (idx === -1) return prev;
         const [card] = fromList.cards.splice(idx, 1);
 
@@ -212,7 +212,7 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full text-white">
+      <div className="flex h-full items-center justify-center text-white">
         <div className="spinner border-white"></div>
         <span className="ml-2">{t('loadingBoard')}</span>
       </div>
@@ -220,11 +220,11 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
   }
 
   if (isError) {
-    return <div className="text-center p-10 text-white">{t('boardError')}</div>;
+    return <div className="p-10 text-center text-white">{t('boardError')}</div>;
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden board-surface rounded-2xl border border-white/10">
+    <div className="board-surface flex h-full min-h-[68vh] flex-col overflow-hidden">
       {showHeader && (
         <div className="px-6 pt-6">
           <div className="board-header flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -232,13 +232,11 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
               <div className="text-xs uppercase tracking-[0.35em] text-emerald-100/70">
                 {t('workspaceBoard')}
               </div>
-              <h1 className="board-title heading-soft text-2xl md:text-3xl font-semibold mt-1">
+              <h1 className="board-title heading-soft mt-1 text-2xl font-semibold md:text-3xl">
                 {board?.name}
               </h1>
               {board?.description && (
-                <p className="text-sm text-emerald-50/70 mt-1">
-                  {board.description}
-                </p>
+                <p className="mt-1 text-sm text-emerald-50/70">{board.description}</p>
               )}
             </div>
             <div className="flex gap-2">
@@ -247,8 +245,8 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
             </div>
           </div>
 
-          <div className="mt-3 bg-white/10 border border-white/10 rounded-2xl p-3">
-            <div className="flex flex-col md:flex-row gap-2">
+          <div className="mt-3 rounded-2xl border border-white/10 bg-white/10 p-3">
+            <div className="flex flex-col gap-2 md:flex-row">
               <input
                 className="input"
                 placeholder={t('aiSearchPlaceholder')}
@@ -269,16 +267,16 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
             </div>
 
             {!!aiSearchResult?.cards?.length && (
-              <div className="mt-3 space-y-2 max-h-56 overflow-auto custom-scrollbar">
+              <div className="custom-scrollbar mt-3 max-h-56 space-y-2 overflow-auto">
                 {aiSearchResult.cards.map((card) => (
                   <button
                     key={card._id}
                     type="button"
-                    className="w-full text-left rounded-lg border border-white/10 bg-white/5 px-3 py-2 hover:bg-white/10"
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-left hover:bg-white/10"
                     onClick={() => setSelectedCardId(card._id)}
                   >
-                    <div className="text-sm text-white font-medium">{card.title}</div>
-                    <div className="text-xs text-emerald-100/70 mt-1">
+                    <div className="text-sm font-medium text-white">{card.title}</div>
+                    <div className="mt-1 text-xs text-emerald-100/70">
                       {t('listLabel')}: {card.list?.name || 'N/A'}
                     </div>
                   </button>
@@ -333,7 +331,7 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
           setTrashHover(false);
         }}
       >
-        <div className="flex-1 overflow-x-auto p-6 flex gap-4 items-start custom-scrollbar">
+        <div className="custom-scrollbar flex flex-1 items-start gap-5 overflow-x-auto px-6 py-7">
           {board?.lists?.map((list) => (
             <ListColumn
               key={list._id}
@@ -344,9 +342,9 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
             />
           ))}
 
-          <div className="w-72 shrink-0">
+          <div className="w-80 shrink-0">
             {isAddingList ? (
-              <div className="bg-white/90 rounded-2xl p-4 shadow-xl">
+              <div className="rounded-[28px] bg-white/96 p-4 shadow-[0_18px_40px_rgba(15,23,42,0.16)]">
                 <input
                   className="input mb-2"
                   placeholder={t('listNamePlaceholder')}
@@ -369,7 +367,7 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
             ) : (
               <button
                 onClick={() => setIsAddingList(true)}
-                className="w-full bg-white/15 hover:bg-white/25 text-white p-4 rounded-2xl text-left font-semibold transition-all border border-white/10"
+                className="w-full rounded-[28px] border border-white/30 bg-white/10 px-5 py-4 text-left font-semibold text-white transition-all hover:bg-white/20"
               >
                 + {t('addAnotherList')}
               </button>
@@ -383,23 +381,21 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
               trash.setNodeRef(node);
               trashRef.current = node;
             }}
-            className={`w-full border border-dashed rounded-2xl px-4 py-3 text-sm font-semibold text-white/80 transition flex items-center justify-center gap-2 ${
+            className={`flex w-full items-center justify-center gap-2 rounded-[28px] border border-dashed px-4 py-4 text-sm font-semibold transition ${
               trash.isOver || trashHover
-                ? 'border-red-300 bg-red-500/20 text-white'
-                : 'border-white/15 bg-white/5'
+                ? 'border-red-200 bg-white/20 text-white'
+                : 'border-white/20 bg-white/10 text-white/78'
             }`}
             data-droppable="trash"
           >
-            <span className="text-lg">🗑️</span>
+            <span className="text-lg">Trash</span>
             {t('trashHint')}
           </div>
         </div>
 
         <DragOverlay>
           {activeCard ? (
-            <div className="card shadow-2xl rotate-3 w-64 opacity-90">
-              {activeCard.title}
-            </div>
+            <div className="card-item w-64 rotate-2 opacity-95 shadow-2xl">{activeCard.title}</div>
           ) : null}
         </DragOverlay>
       </DndContext>

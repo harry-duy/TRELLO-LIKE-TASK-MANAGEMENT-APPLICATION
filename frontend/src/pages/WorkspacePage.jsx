@@ -138,42 +138,70 @@ export default function WorkspacePage() {
   const boards = state.workspace?.boards || [];
 
   if (selectedBoardId) {
+    const activeBoard =
+      boards.find((board) => (board._id || board.id) === selectedBoardId) || boards[0];
+
     return (
-      <div className="grid gap-4 lg:grid-cols-[260px_1fr] items-start">
-        <aside className="card bg-white/10 border border-white/10 p-3 sticky top-4">
-          <div className="flex items-center justify-between gap-2 mb-3">
-            <h2 className="text-sm font-semibold text-white">{t('boardsTitle')}</h2>
-            <button
-              type="button"
-              onClick={() => setSelectedBoardId(null)}
-              className="text-xs text-emerald-100/70 hover:text-white"
-            >
-              {t('gridView')}
-            </button>
-          </div>
-
-          <div className="space-y-1 max-h-[70vh] overflow-auto custom-scrollbar pr-1">
-            {boards.map((board) => {
-              const id = board._id || board.id;
-              const isActive = id === selectedBoardId;
-
-              return (
+      <div className="workspace-board-shell">
+        <div className="workspace-board-topbar">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-3 text-sm text-emerald-50/75">
                 <button
-                  key={id}
                   type="button"
-                  onClick={() => setSelectedBoardId(id)}
-                  className={`w-full text-left rounded-lg px-3 py-2 text-sm transition ${
-                    isActive
-                      ? 'bg-emerald-400/20 text-emerald-50 border border-emerald-300/30'
-                      : 'bg-white/5 text-emerald-100/80 hover:bg-white/10'
-                  }`}
+                  onClick={() => setSelectedBoardId(null)}
+                  className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-white/20"
                 >
-                  <div className="font-medium truncate">{board.name}</div>
+                  {t('gridView')}
                 </button>
-              );
-            })}
+                <span className="hidden h-5 w-px bg-white/20 sm:block" />
+                <span>{state.workspace?.name || t('workspaceFallbackName')}</span>
+                <span className="hidden h-5 w-px bg-white/20 sm:block" />
+                <span>
+                  {t('boardsTitle')}: {boards.length}
+                </span>
+              </div>
+
+              <h1 className="mt-4 text-3xl font-bold text-white heading-soft">
+                {activeBoard?.name}
+              </h1>
+              <p className="mt-2 max-w-3xl text-sm text-emerald-50/78">
+                {activeBoard?.description ||
+                  state.workspace?.description ||
+                  t('dashboardWorkspaceFallbackDescription')}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2 xl:max-w-[40rem]">
+              {boards.map((board) => {
+                const id = board._id || board.id;
+                const isActive = id === selectedBoardId;
+
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setSelectedBoardId(id)}
+                    className={`workspace-board-pill min-w-[180px] flex-1 xl:flex-none ${
+                      isActive ? 'workspace-board-pill-active' : ''
+                    }`}
+                  >
+                    <div className="truncate text-sm font-semibold">{board.name}</div>
+                    <div
+                      className={`mt-1 text-xs ${
+                        isActive ? 'text-slate-500' : 'text-emerald-50/68'
+                      }`}
+                    >
+                      {t('createdLabel', {
+                        date: new Date(board.createdAt).toLocaleDateString(),
+                      })}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </aside>
+        </div>
 
         <div className="min-w-0">
           <BoardCanvas boardId={selectedBoardId} showHeader={false} />

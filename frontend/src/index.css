@@ -73,10 +73,11 @@
   }
 
   .board-surface {
-    background: radial-gradient(circle at top left, rgba(56, 189, 248, 0.25), transparent 40%),
-      radial-gradient(circle at 35% 20%, rgba(45, 212, 191, 0.18), transparent 38%),
-      radial-gradient(circle at top right, rgba(16, 185, 129, 0.22), transparent 35%),
-      linear-gradient(135deg, rgba(10, 37, 64, 0.98), rgba(8, 61, 57, 0.98));
+    background:
+      radial-gradient(circle at 15% 15%, rgba(255, 255, 255, 0.2), transparent 20%),
+      radial-gradient(circle at 85% 10%, rgba(244, 114, 182, 0.22), transparent 28%),
+      radial-gradient(circle at 100% 100%, rgba(34, 211, 238, 0.2), transparent 35%),
+      linear-gradient(120deg, rgba(52, 87, 240, 0.98), rgba(129, 67, 232, 0.96) 55%, rgba(26, 168, 236, 0.96));
   }
 
   .board-header {
@@ -89,19 +90,19 @@
   }
 
   .list-column {
-    @apply bg-white/10 border border-white/10 rounded-2xl shadow-[0_18px_50px_rgba(0,0,0,0.35)] flex flex-col max-h-full backdrop-blur;
+    @apply bg-slate-50/95 border border-white/60 rounded-[28px] shadow-[0_18px_50px_rgba(15,23,42,0.18)] flex flex-col max-h-full backdrop-blur-sm;
   }
 
   .list-pill {
-    @apply text-xs uppercase tracking-[0.2em] text-emerald-600 font-semibold;
+    @apply text-[11px] uppercase tracking-[0.24em] text-slate-400 font-semibold;
   }
 
   .card-item {
-    @apply bg-white/95 rounded-2xl border border-slate-100 shadow-[0_10px_25px_rgba(15,23,42,0.12)] px-3 py-2 text-slate-900 transition hover:-translate-y-0.5 hover:shadow-[0_16px_30px_rgba(15,23,42,0.18)];
+    @apply bg-white rounded-3xl border border-slate-200 shadow-[0_12px_30px_rgba(15,23,42,0.10)] px-4 py-3 text-slate-900 transition hover:-translate-y-0.5 hover:shadow-[0_18px_36px_rgba(15,23,42,0.14)];
   }
 
   .board-button {
-    @apply text-sm font-semibold px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/15 transition;
+    @apply text-sm font-semibold px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 transition;
   }
 
   .heading-soft {
@@ -111,6 +112,22 @@
 
   .panel-soft {
     @apply bg-white/10 border border-white/10 rounded-2xl shadow-[0_16px_40px_rgba(0,0,0,0.32)];
+  }
+
+  .workspace-board-shell {
+    @apply rounded-[32px] border border-white/20 bg-white/10 shadow-[0_24px_70px_rgba(15,23,42,0.24)] backdrop-blur-sm overflow-hidden;
+  }
+
+  .workspace-board-topbar {
+    @apply px-6 py-5 border-b border-white/10 bg-white/10 text-white;
+  }
+
+  .workspace-board-pill {
+    @apply rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-left text-white transition hover:bg-white/20;
+  }
+
+  .workspace-board-pill-active {
+    @apply bg-white text-slate-900 border-white shadow-[0_14px_30px_rgba(255,255,255,0.18)];
   }
 
   .text-soft {

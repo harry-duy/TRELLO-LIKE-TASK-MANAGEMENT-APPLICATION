@@ -6,6 +6,34 @@ import listService from '@services/listService';
 import { useTranslation } from '@hooks/useTranslation';
 import { SortableCard } from './SortableCard';
 
+function PencilIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden="true">
+      <path
+        d="M13.9 2.9a2.1 2.1 0 1 1 3 3L8 14.8l-3.7.7.7-3.7 8.9-8.9Z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden="true">
+      <path
+        d="M4.5 5.5h11m-9.8 0 .6 9.2a1 1 0 0 0 1 .9h5.4a1 1 0 0 0 1-.9l.6-9.2m-6.2 0V3.8c0-.4.3-.8.8-.8h1.4c.4 0 .8.3.8.8v1.7"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdated }) {
   const { t } = useTranslation();
   const [isAdding, setIsAdding] = useState(false);
@@ -64,39 +92,40 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
     <>
       <div
         ref={setNodeRef}
-        className={`list-column w-72 ${isOver ? 'ring-2 ring-white/70' : ''}`}
+        className={`list-column w-[290px] ${isOver ? 'ring-2 ring-sky-300/80' : ''}`}
       >
-        <div className="px-4 pt-4 pb-3 flex items-center justify-between gap-2">
-          <div className="flex-1">
+        <div className="flex items-start justify-between gap-3 px-4 pb-3 pt-4">
+          <div className="min-w-0 flex-1">
             <div className="list-pill">{t('listLabel')}</div>
-            <h3 className="text-base font-semibold text-white mt-1 heading-soft">
+            <h3 className="heading-soft mt-1 truncate text-xl font-semibold text-slate-900">
               {list.name}
             </h3>
           </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-emerald-50/70 bg-white/10 px-2 py-1 rounded-full">
-            {cards.length}
-          </span>
-          <button
-            className="h-7 w-7 rounded-full border border-white/10 text-emerald-50/70 hover:text-white hover:border-white/30 transition flex items-center justify-center text-xs"
-            onClick={() => setIsEditing(true)}
-            title={t('editList')}
-            type="button"
-          >
-            ✎
-          </button>
-          <button
-            className="h-7 w-7 rounded-full border border-white/10 text-red-200 hover:text-white hover:border-red-300 transition flex items-center justify-center text-xs"
-            onClick={handleDeleteList}
-            title={t('deleteList')}
-            type="button"
-          >
-            🗑
-          </button>
-        </div>
-      </div>
 
-        <div className="px-2 pb-2 flex-1 overflow-y-auto custom-scrollbar">
+          <div className="flex items-center gap-2">
+            <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-500">
+              {cards.length}
+            </span>
+            <button
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-800"
+              onClick={() => setIsEditing(true)}
+              title={t('editList')}
+              type="button"
+            >
+              <PencilIcon />
+            </button>
+            <button
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 transition hover:border-red-200 hover:text-red-500"
+              onClick={handleDeleteList}
+              title={t('deleteList')}
+              type="button"
+            >
+              <TrashIcon />
+            </button>
+          </div>
+        </div>
+
+        <div className="custom-scrollbar flex-1 space-y-3 overflow-y-auto px-3 pb-3">
           <SortableContext
             items={cards.map((card) => card._id)}
             strategy={verticalListSortingStrategy}
@@ -114,17 +143,17 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
           </SortableContext>
 
           {!cards.length && (
-            <div className="text-xs text-emerald-50/60 italic px-1 py-2">
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-white/70 px-4 py-5 text-sm italic text-slate-400">
               {t('noCardsYet')}
             </div>
           )}
         </div>
 
-        <div className="p-3 pt-2 border-t border-white/10">
+        <div className="border-t border-slate-200/80 px-4 py-4">
           {isAdding ? (
             <div>
               <textarea
-                className="w-full p-2 border rounded-lg shadow-sm mb-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                className="input mb-2 min-h-[96px]"
                 placeholder={t('cardTitlePlaceholder')}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
@@ -136,7 +165,7 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
                 </button>
                 <button
                   onClick={() => setIsAdding(false)}
-                  className="text-slate-500"
+                  className="text-sm font-medium text-slate-500 transition hover:text-slate-700"
                 >
                   {t('cancel')}
                 </button>
@@ -145,7 +174,7 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
           ) : (
             <button
               onClick={() => setIsAdding(true)}
-              className="w-full p-2 text-slate-600 hover:bg-slate-100 text-left rounded-lg"
+              className="w-full rounded-2xl px-3 py-3 text-left font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
             >
               {t('addNewCard')}
             </button>
@@ -160,7 +189,7 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
             onClick={(e) => e.stopPropagation()}
           >
             <header className="mb-4">
-              <h3 className="text-lg font-semibold heading-soft">{t('renameList')}</h3>
+              <h3 className="heading-soft text-lg font-semibold">{t('renameList')}</h3>
             </header>
             <input
               className="input"
@@ -175,7 +204,7 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
               }}
               autoFocus
             />
-            <div className="flex justify-end gap-2 mt-4">
+            <div className="mt-4 flex justify-end gap-2">
               <button
                 className="btn btn-secondary btn-sm"
                 onClick={() => {
