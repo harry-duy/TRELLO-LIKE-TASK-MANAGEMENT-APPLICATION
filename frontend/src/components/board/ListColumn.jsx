@@ -3,6 +3,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities';
 import cardService from '@services/cardService';
 import listService from '@services/listService';
+import { useTranslation } from '@hooks/useTranslation';
 import { SortableCard } from './SortableCard';
 
 export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdated, columnWidth }) {

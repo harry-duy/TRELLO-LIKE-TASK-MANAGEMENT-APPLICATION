@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@store/authStore';
+import { useUiStore } from '@store/uiStore';
 import workspaceService from '@services/workspaceService';
 import boardService from '@services/boardService';
 import StarButton from '@components/board/StarButton';
@@ -267,7 +268,9 @@ function WorkspaceSettingsModal({ workspace, boardCount, isGuest, l, onClose, on
     try {
       await navigator.clipboard.writeText(String(workspaceId));
       toast.success(l.copied);
-    } catch {}
+    } catch {
+      toast.error('Copy failed');
+    }
   };
 
   const handleSave = async () => {

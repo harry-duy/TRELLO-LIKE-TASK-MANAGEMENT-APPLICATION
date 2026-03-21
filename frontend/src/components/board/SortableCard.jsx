@@ -1,5 +1,8 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { useUiStore } from '@store/uiStore';
+import { LabelChip } from '@components/board/LabelManager';
+import DueDateBadge from '@components/board/DueDateBadge';
 
 export function SortableCard({ card, onClick }) {
   const lang = useUiStore((state) => state.language) || 'vi';

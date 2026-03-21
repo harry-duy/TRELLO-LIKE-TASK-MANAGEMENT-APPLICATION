@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useAuthStore } from '@store/authStore';
+import { useUiStore } from '@store/uiStore';
 import workspaceService from '@services/workspaceService';
 import boardService from '@services/boardService';
 import StarButton from '@components/board/StarButton';

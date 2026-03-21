@@ -352,7 +352,9 @@ function NotificationsModal({ t, onClose }) {
           const r = await apiClient.get(`/activities/workspace/${ws._id}?limit=25`);
           const list = r?.data?.activities || r?.data || r || [];
           if (Array.isArray(list)) all.push(...list);
-        } catch {}
+        } catch {
+          // Ignore per-workspace notification failures and keep loading the rest.
+        }
       }));
       setActs(all.filter(a=>a.actor?._id!==user?._id).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).slice(0,40));
     } catch { setActs([]); }
@@ -406,7 +408,7 @@ function NotificationsModal({ t, onClose }) {
               <div style={{ flex:1, minWidth:0 }}>
                 <p style={{ fontSize:13, color:'rgba(255,255,255,.85)', lineHeight:1.4, margin:0 }}>
                   <strong style={{ color:'white' }}>{actor}</strong>{' '}{action}
-                  {target && <span style={{ color:'rgba(167,243,208,.7)' }}> "{target}"</span>}
+                  {target && <span style={{ color:'rgba(167,243,208,.7)' }}>{` "${target}"`}</span>}
                 </p>
                 <p style={{ fontSize:11, color:'rgba(255,255,255,.3)', marginTop:3, margin:0 }}>{timeAgo(a.createdAt)}</p>
               </div>
