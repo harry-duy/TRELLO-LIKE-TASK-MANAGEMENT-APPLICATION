@@ -12,6 +12,7 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
   const [title, setTitle] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(list.name);
+
   const {
     attributes,
     listeners,
@@ -22,10 +23,7 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
     isOver,
   } = useSortable({ id: list._id, data: { type: 'list' } });
 
-  const cards = useMemo(
-    () => (Array.isArray(list.cards) ? list.cards : []),
-    [list.cards]
-  );
+  const cards = useMemo(() => (Array.isArray(list.cards) ? list.cards : []), [list.cards]);
 
   const handleAddCard = async () => {
     if (!title.trim()) return;
@@ -37,9 +35,9 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
       });
       setTitle('');
       setIsAdding(false);
-      if (onCardAdded) onCardAdded();
+      onCardAdded?.();
     } catch (err) {
-      console.error('Failed to create card:', err);
+      console.error(t('createCardError'), err);
     }
   };
 
@@ -48,20 +46,21 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
     try {
       await listService.updateList(list._id, { name: name.trim() });
       setIsEditing(false);
-      if (onListUpdated) onListUpdated();
+      onListUpdated?.();
     } catch (err) {
-      console.error('Failed to update list:', err);
+      console.error(t('updateListError'), err);
     }
   };
 
   const handleDeleteList = async () => {
-    const ok = window.confirm('Xóa danh sách này? Thẻ bên trong sẽ bị xóa.');
+    const ok = window.confirm(t('deleteListConfirm'));
     if (!ok) return;
     try {
       await listService.deleteList(list._id);
-      if (onListUpdated) onListUpdated();
+      setIsEditing(false);
+      onListUpdated?.();
     } catch (err) {
-      console.error('Failed to delete list:', err);
+      console.error(t('deleteListError'), err);
     }
   };
 
@@ -143,28 +142,7 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
               </svg>
             </button>
           </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-emerald-50/70 bg-white/10 px-2 py-1 rounded-full">
-            {cards.length}
-          </span>
-          <button
-            className="h-7 w-7 rounded-full border border-white/10 text-emerald-50/70 hover:text-white hover:border-white/30 transition flex items-center justify-center text-xs"
-            onClick={() => setIsEditing(true)}
-            title="Edit list"
-            type="button"
-          >
-            ✎
-          </button>
-          <button
-            className="h-7 w-7 rounded-full border border-white/10 text-red-200 hover:text-white hover:border-red-300 transition flex items-center justify-center text-xs"
-            onClick={handleDeleteList}
-            title="Delete list"
-            type="button"
-          >
-            🗑
-          </button>
         </div>
-      </div>
 
         <div
           className="custom-scrollbar"
@@ -180,8 +158,14 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
               <button
                 key={card._id}
                 type="button"
-                onClick={() => onCardClick && onCardClick(card._id)}
+                onClick={() => onCardClick?.(card._id)}
                 className="w-full text-left"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  display: 'block',
+                }}
               >
                 <SortableCard card={card} />
               </button>
@@ -207,8 +191,9 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
           {isAdding ? (
             <div>
               <textarea
+                autoFocus
                 className="w-full p-2 border rounded-lg shadow-sm mb-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                placeholder="Card title..."
+                placeholder={t('cardTitlePlaceholder')}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 onKeyDown={(e) => {
@@ -276,10 +261,13 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
       </div>
 
       {isEditing && (
-        <div className="modal-overlay" onClick={() => {
-          setIsEditing(false);
-          setName(list.name);
-        }}>
+        <div
+          className="modal-overlay"
+          onClick={() => {
+            setIsEditing(false);
+            setName(list.name);
+          }}
+        >
           <div
             className="modal-content"
             style={{ maxWidth: 360, padding: 20 }}
@@ -308,7 +296,7 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
               }}
               autoFocus
             />
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', marginTop: 12 }}>
               <button type="button" className="btn btn-danger btn-sm" onClick={handleDeleteList}>
                 {t('deleteList')}
               </button>
