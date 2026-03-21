@@ -15,6 +15,16 @@ const workspaceService = {
     const response = await apiClient.get(`/workspaces/${workspaceId}`);
     return response?.data ?? response;
   },
+
+  updateWorkspace: async (workspaceId, updates) => {
+    const response = await apiClient.put(`/workspaces/${workspaceId}`, updates);
+    return response?.data ?? response;
+  },
+
+  deleteWorkspace: async (workspaceId) => {
+    const response = await apiClient.delete(`/workspaces/${workspaceId}`);
+    return response?.data ?? response;
+  },
 };
 
 export default workspaceService;
