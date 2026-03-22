@@ -3,6 +3,8 @@ const Board = require('../models/board.model');
 const Workspace = require('../models/workspace.model');
 const Activity = require('../models/activity.model');
 const { asyncHandler, AppError } = require('../middleware/errorHandler');
+const notify    = require('../utils/notifyHelper');
+const Workspace = require('../models/workspace.model');
 
 const ensureBoardAccess = async (boardId, user) => {
   const board = await Board.findById(boardId).select('workspace');
@@ -130,18 +132,84 @@ exports.moveCard = asyncHandler(async (req, res, next) => {
     movedBy: req.user._id,
   });
 
+   if (card.assignees?.length > 0) {
+    const io = req.app.get('io');
+    await notify(io, {
+      actor:      req.user._id,
+      recipients: card.assignees.map((a) => a._id || a),
+      type:       'card_moved',
+      title:      'Card của bạn bị di chuyển',
+      message:    `${req.user.name} đã di chuyển card "${card.title}"`,
+      link:       `/board/${boardId}`,
+      metadata:   { cardId: id, cardTitle: card.title, boardId, fromList: oldListId, toList: listId },
+    });
+  }
+
   res.status(200).json({ success: true, data: card });
 });
 
 // @desc    Update card
 // @route   PUT /api/cards/:id
 exports.updateCard = asyncHandler(async (req, res, next) => {
+  const oldCard = await Card.findById(req.params.id)
+    .select('assignees title board');
+  if (!oldCard) return next(new AppError('Card not found', 404));
+
   const card = await Card.findByIdAndUpdate(req.params.id, req.body, {
-    new: true,
-    runValidators: true,
+    new: true, runValidators: true,
   });
 
-  if (!card) return next(new AppError('Card not found', 404));
+  // ✅ Notify khi có assignees mới
+  if (req.body.assignees) {
+    const oldIds = (oldCard.assignees || []).map((a) => a.toString());
+    const newIds = (req.body.assignees || []).map((a) => a.toString());
+
+    // Người mới được thêm
+    const addedIds   = newIds.filter((id) => !oldIds.includes(id));
+    // Người bị bỏ
+    const removedIds = oldIds.filter((id) => !newIds.includes(id));
+
+    const io = req.app?.get?.('io');
+
+    if (addedIds.length > 0) {
+      await notify(io, {
+        actor:      req.user._id,
+        recipients: addedIds,
+        type:       'member_added_card',
+        title:      'Bạn được giao một card',
+        message:    `${req.user.name} đã giao card "${card.title}" cho bạn`,
+        link:       `/board/${card.board}`,
+        metadata:   { cardId: card._id, cardTitle: card.title, boardId: card.board },
+      });
+    }
+
+    if (removedIds.length > 0) {
+      await notify(io, {
+        actor:      req.user._id,
+        recipients: removedIds,
+        type:       'member_removed_card',
+        title:      'Bạn bị bỏ khỏi một card',
+        message:    `${req.user.name} đã bỏ bạn khỏi card "${card.title}"`,
+        link:       `/board/${card.board}`,
+        metadata:   { cardId: card._id, cardTitle: card.title, boardId: card.board },
+      });
+    }
+  }
+
+  // ✅ Notify assignees hiện tại khi card được cập nhật (title/description/dueDate)
+  const hasContentUpdate = req.body.title || req.body.description || req.body.dueDate !== undefined;
+  if (hasContentUpdate && card.assignees?.length > 0) {
+    const io = req.app?.get?.('io');
+    await notify(io, {
+      actor:      req.user._id,
+      recipients: card.assignees.map((a) => a._id || a),
+      type:       'card_updated',
+      title:      'Card bạn phụ trách bị cập nhật',
+      message:    `${req.user.name} đã cập nhật card "${card.title}"`,
+      link:       `/board/${card.board}`,
+      metadata:   { cardId: card._id, cardTitle: card.title, boardId: card.board },
+    });
+  }
 
   res.status(200).json({ success: true, data: card });
 });
@@ -171,10 +239,25 @@ exports.addComment = asyncHandler(async (req, res, next) => {
   await card.addComment(req.user._id, content);
 
   const io = req.app.get('io');
+
+  // Emit real-time cho board
   io.to(`board:${boardId}`).emit('comment:added', {
     cardId: id,
     comment: card.comments[card.comments.length - 1],
   });
+
+  // ✅ Notify: assignees của card (trừ người comment)
+  if (card.assignees?.length > 0) {
+    await notify(io, {
+      actor:      req.user._id,
+      recipients: card.assignees.map((a) => a._id || a),
+      type:       'comment_added',
+      title:      'Bình luận mới trên card của bạn',
+      message:    `${req.user.name} đã bình luận: "${content.slice(0, 60)}${content.length > 60 ? '...' : ''}"`,
+      link:       `/board/${boardId}`,
+      metadata:   { cardId: id, cardTitle: card.title, boardId, comment: content.slice(0, 100) },
+    });
+  }
 
   res.status(200).json({ success: true, data: card.comments });
 });

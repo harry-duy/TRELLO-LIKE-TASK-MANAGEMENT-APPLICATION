@@ -29,6 +29,7 @@ const cardRoutes = require('./routes/card.routes');
 const activityRoutes = require('./routes/activity.routes');
 const adminRoutes = require('./routes/admin.routes');
 const aiRoutes = require('./routes/ai.routes');
+const notificationRoutes = require('./routes/notification.routes');
 
 const app = express();
 const server = http.createServer(app);
@@ -90,6 +91,7 @@ app.use('/api/cards', cardRoutes);
 app.use('/api/activities', activityRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // 404 Handler
 app.use('*', (req, res) => {

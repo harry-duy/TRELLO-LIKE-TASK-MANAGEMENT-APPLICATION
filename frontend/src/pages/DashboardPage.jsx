@@ -243,27 +243,48 @@ function BoardCard({ board, l, onStarToggle }) {
   );
 }
 
-function WorkspaceSettingsModal({ workspace, boardCount, isGuest, l, onClose, onUpdated, onDeleted }) {
-  const navigate = useNavigate();
-  const [isEditing, setIsEditing] = useState(false);
-  const [name, setName] = useState(workspace?.name || '');
-  const [description, setDescription] = useState(workspace?.description || '');
-  const [isSaving, setIsSaving] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+// Tìm hàm WorkspaceSettingsModal trong DashboardPage.jsx và thay bằng đoạn này
 
+function WorkspaceSettingsModal({
+  workspace,
+  boardCount,
+  isGuest,
+  l,
+  onClose,
+  onUpdated,
+  onDeleted,
+  defaultTab = 'info',   // ← THÊM
+}) {
+  
+
+  // ── Local state ────────────────────────────────────────────────────────────
+  const [tab, setTab] = useState(defaultTab);   // 'info' | 'members'
+  const [isEditing,   setIsEditing]   = useState(false);
+  const [name,        setName]        = useState(workspace?.name        || '');
+  const [description, setDescription] = useState(workspace?.description || '');
+  const [visibility,  setVisibility]  = useState(workspace?.visibility  || 'private');
+  const [isSaving,    setIsSaving]    = useState(false);
+  const [isDeleting,  setIsDeleting]  = useState(false);
+
+  // Reset khi workspace thay đổi
   useEffect(() => {
+    setTab('info');
     setIsEditing(false);
-    setName(workspace?.name || '');
+    setName(workspace?.name        || '');
     setDescription(workspace?.description || '');
+    setVisibility(workspace?.visibility   || 'private');
     setIsSaving(false);
     setIsDeleting(false);
   }, [workspace]);
 
   if (!workspace) return null;
 
-  const workspaceId = getId(workspace);
-  const updatedAt = new Date(workspace.updatedAt || workspace.createdAt || Date.now()).toLocaleDateString();
+  const workspaceId = workspace?._id || workspace?.id || workspace;
+  const updatedAt   = new Date(
+    workspace.updatedAt || workspace.createdAt || Date.now()
+  ).toLocaleDateString();
 
+  // ── Copy ID ────────────────────────────────────────────────────────────────
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(String(workspaceId));
@@ -273,48 +294,48 @@ function WorkspaceSettingsModal({ workspace, boardCount, isGuest, l, onClose, on
     }
   };
 
+  // ── Save (updateWorkspace) ─────────────────────────────────────────────────
   const handleSave = async () => {
     if (!name.trim()) return;
     setIsSaving(true);
     try {
-      const response = await workspaceService.updateWorkspace(workspaceId, {
-        name: name.trim(),
+      // Gọi PUT /api/workspaces/:id
+      const res           = await workspaceService.updateWorkspace(workspaceId, {
+        name:        name.trim(),
         description: description.trim(),
+        visibility,
       });
-      const nextWorkspace = response?.data || response;
+      const nextWorkspace = res?.data || res;
+
       onUpdated?.(workspaceId, nextWorkspace);
       toast.success(l.updateSuccess);
       setIsEditing(false);
-    } catch (error) {
-      toast.error(
-        error?.response?.status === 404
-          ? l.updateUnsupported
-          : (error?.response?.data?.message || error?.message || l.updateUnsupported)
-      );
+    } catch (err) {
+      toast.error(err?.message || l.updateUnsupported);
     } finally {
       setIsSaving(false);
     }
   };
 
+  // ── Delete (deleteWorkspace) ───────────────────────────────────────────────
   const handleDelete = async () => {
     if (!window.confirm(l.deleteConfirm)) return;
     setIsDeleting(true);
     try {
+      // Gọi DELETE /api/workspaces/:id
       await workspaceService.deleteWorkspace(workspaceId);
+
       onDeleted?.(workspaceId);
       toast.success(l.deleteSuccess);
       onClose();
-    } catch (error) {
-      toast.error(
-        error?.response?.status === 404
-          ? l.deleteUnsupported
-          : (error?.response?.data?.message || error?.message || l.deleteUnsupported)
-      );
+    } catch (err) {
+      toast.error(err?.message || l.deleteUnsupported);
     } finally {
       setIsDeleting(false);
     }
   };
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div
       className="modal-overlay"
@@ -323,12 +344,15 @@ function WorkspaceSettingsModal({ workspace, boardCount, isGuest, l, onClose, on
     >
       <div
         className="modal-content"
-        onClick={(event) => event.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
         style={{ maxWidth: 520, padding: 24, background: 'rgba(15,23,42,.98)' }}
       >
+        {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h3 className="text-lg font-semibold text-white">{l.workspaceSettingsTitle}</h3>
+            <h3 className="text-lg font-semibold text-white">
+              {l.workspaceSettingsTitle}
+            </h3>
             <p className="mt-1 text-sm text-white/50">{l.workspaceSettingsHint}</p>
           </div>
           <button type="button" className="board-inline-close" onClick={onClose}>
@@ -336,149 +360,476 @@ function WorkspaceSettingsModal({ workspace, boardCount, isGuest, l, onClose, on
           </button>
         </div>
 
-        <div className="mt-5 space-y-4">
-          <div className="rounded-[18px] border border-white/10 bg-white/[0.04] p-4">
-            <div className="flex items-start gap-3">
-              <span
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-sm font-bold text-white"
-                style={{ background: `hsl(${((workspace.name?.charCodeAt(0) || 0) * 13) % 360}, 72%, 52%)` }}
-              >
-                {(workspace.name || 'W')[0].toUpperCase()}
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  {isEditing ? (
-                    <div className="min-w-[240px] flex-1">
-                      <input
-                        className="input"
-                        value={name}
-                        onChange={(event) => setName(event.target.value)}
-                      />
-                    </div>
-                  ) : (
-                    <h4 className="truncate text-[18px] font-semibold text-white">{workspace.name}</h4>
-                  )}
-                  <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-white/70">
-                    {isGuest ? l.workspaceTypeGuest : l.workspaceTypeOwned}
-                  </span>
-                </div>
-                {isEditing ? (
-                  <textarea
-                    className="input mt-2"
-                    rows={3}
-                    value={description}
-                    onChange={(event) => setDescription(event.target.value)}
-                  />
-                ) : (
-                  <p className="mt-2 text-sm text-white/60">{workspace.description || l.noDescription}</p>
-                )}
-              </div>
-            </div>
-          </div>
+        {/* Tab bar */}
+        <div style={{
+          display: 'flex', gap: 4, marginTop: 16, marginBottom: 20,
+          background: 'rgba(255,255,255,.05)', borderRadius: 999, padding: 3,
+        }}>
+          {[
+            { key: 'info',    label: l.workspaceSettings },
+            { key: 'members', label: l.workspaceMembers  },
+          ].map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              style={{
+                flex: 1, padding: '6px 12px', borderRadius: 999,
+                border: 'none', cursor: 'pointer', fontSize: 12,
+                fontWeight: 600, transition: 'all .15s',
+                background: tab === t.key ? 'white'       : 'transparent',
+                color:      tab === t.key ? '#0f172a'     : 'rgba(255,255,255,.6)',
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/35">
-                {l.workspaceBoards}
-              </div>
-              <div className="mt-2 text-2xl font-semibold text-white">{boardCount}</div>
-            </div>
-            <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/35">
-                {l.workspaceMembers}
-              </div>
-              <div className="mt-2 text-2xl font-semibold text-white">{workspace.members?.length || 0}</div>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-            <div className="space-y-3 text-sm">
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-white/45">{l.workspaceType}</span>
-                <span className="text-white/80">{isGuest ? l.workspaceTypeGuest : l.workspaceTypeOwned}</span>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-white/45">{l.workspaceDescription}</span>
-                <span className="max-w-[60%] truncate text-right text-white/80">
-                  {workspace.description || l.noDescription}
+        {/* ── Tab: Info ───────────────────────────────────────────────────── */}
+        {tab === 'info' && (
+          <div className="space-y-4">
+            {/* Workspace card preview */}
+            <div className="rounded-[18px] border border-white/10 bg-white/[0.04] p-4">
+              <div className="flex items-start gap-3">
+                <span
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-sm font-bold text-white"
+                  style={{
+                    background: `hsl(${
+                      ((workspace.name?.charCodeAt(0) || 0) * 13) % 360
+                    },72%,52%)`,
+                  }}
+                >
+                  {(workspace.name || 'W')[0].toUpperCase()}
                 </span>
+
+                <div className="min-w-0 flex-1">
+                  {isEditing ? (
+                    <input
+                      className="input"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder={l.workspaceSettingsTitle}
+                      autoFocus
+                    />
+                  ) : (
+                    <h4 className="truncate text-[18px] font-semibold text-white">
+                      {workspace.name}
+                    </h4>
+                  )}
+
+                  {isEditing ? (
+                    <textarea
+                      className="input mt-2"
+                      rows={2}
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      placeholder={l.descLabel}
+                    />
+                  ) : (
+                    <p className="mt-2 text-sm text-white/60">
+                      {workspace.description || l.noDescription}
+                    </p>
+                  )}
+
+                  {/* Visibility toggle — chỉ hiện khi đang edit */}
+                  {isEditing && (
+                    <div style={{ marginTop: 10 }}>
+                      <label style={{
+                        fontSize: 11, fontWeight: 600, textTransform: 'uppercase',
+                        letterSpacing: '.08em', color: 'rgba(167,243,208,.5)',
+                        display: 'block', marginBottom: 6,
+                      }}>
+                        Visibility
+                      </label>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        {['private', 'public'].map((v) => (
+                          <button
+                            key={v}
+                            type="button"
+                            onClick={() => setVisibility(v)}
+                            style={{
+                              padding: '6px 14px', borderRadius: 8,
+                              border: '1px solid',
+                              borderColor: visibility === v
+                                ? 'rgba(52,211,153,.5)' : 'rgba(255,255,255,.1)',
+                              background: visibility === v
+                                ? 'rgba(52,211,153,.12)' : 'rgba(255,255,255,.04)',
+                              color: visibility === v ? '#34d399' : 'rgba(255,255,255,.5)',
+                              fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                              textTransform: 'capitalize',
+                            }}
+                          >
+                            {v}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-white/45">{l.updatedAt.replace('{date}', '').trim()}</span>
-                <span className="text-white/80">{updatedAt}</span>
-              </div>
-              <div className="flex items-center justify-between gap-4">
+            </div>
+
+            {/* Stats */}
+            <div className="grid gap-3 sm:grid-cols-3">
+              {[
+                { label: l.workspaceBoards,  val: boardCount },
+                { label: l.workspaceMembers, val: workspace.members?.length || 0 },
+                {
+                  label: l.updatedAt?.replace('{date}', '').trim() || 'Updated',
+                  val:   updatedAt,
+                },
+              ].map((c) => (
+                <div
+                  key={c.label}
+                  className="rounded-2xl border border-white/8 bg-white/[0.03] p-4"
+                >
+                  <div style={{
+                    fontSize: 10, textTransform: 'uppercase',
+                    letterSpacing: '.06em', color: 'rgba(255,255,255,.35)',
+                    marginBottom: 4,
+                  }}>
+                    {c.label}
+                  </div>
+                  <div style={{ fontSize: 20, fontWeight: 600, color: 'white' }}>
+                    {c.val}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Workspace ID */}
+            <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+              <div className="flex items-center justify-between gap-4 text-sm">
                 <span className="text-white/45">{l.workspaceIdLabel}</span>
                 <button
                   type="button"
                   onClick={handleCopy}
-                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
+                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5
+                             text-xs font-medium text-white/80 transition
+                             hover:bg-white/10 hover:text-white"
                 >
                   {l.copyId}
                 </button>
               </div>
             </div>
-          </div>
 
-          <div className="rounded-2xl border border-amber-300/10 bg-amber-300/[0.06] px-4 py-3 text-sm text-amber-50/80">
-            {l.workspaceRoleNote}
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => {
-                  if (isEditing) {
-                    setIsEditing(false);
-                    setName(workspace.name || '');
-                    setDescription(workspace.description || '');
-                  } else {
-                    setIsEditing(true);
-                  }
-                }}
-                disabled={isSaving || isDeleting}
-              >
-                {isEditing ? l.cancel : l.edit}
-              </button>
-              <button
-                type="button"
-                className="btn btn-danger btn-sm"
-                onClick={handleDelete}
-                disabled={isSaving || isDeleting}
-              >
-                {l.deleteWorkspace}
-              </button>
+            {/* Note */}
+            <div className="rounded-2xl border border-amber-300/10 bg-amber-300/[0.06]
+                            px-4 py-3 text-sm text-amber-50/80">
+              {isGuest
+                ? 'Bạn là thành viên được mời — chỉ owner/admin mới chỉnh sửa được.'
+                : l.workspaceRoleNote}
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>
-                {l.close}
-              </button>
-              {isEditing ? (
+            {/* Action buttons */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              {/* Trái: Edit / Delete */}
+              <div className="flex flex-wrap gap-2">
+                {!isGuest && (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => {
+                        if (isEditing) {
+                          setIsEditing(false);
+                          setName(workspace.name || '');
+                          setDescription(workspace.description || '');
+                          setVisibility(workspace.visibility || 'private');
+                        } else {
+                          setIsEditing(true);
+                        }
+                      }}
+                      disabled={isSaving || isDeleting}
+                    >
+                      {isEditing ? l.cancel : l.edit}
+                    </button>
+
+                    <button
+                      type="button"
+                      className="btn btn-danger btn-sm"
+                      onClick={handleDelete}
+                      disabled={isSaving || isDeleting}
+                    >
+                      {isDeleting ? 'Đang xoá...' : l.deleteWorkspace}
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {/* Phải: Save / Open */}
+              <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  className="btn btn-primary btn-sm"
-                  onClick={handleSave}
-                  disabled={isSaving || !name.trim()}
+                  className="btn btn-secondary btn-sm"
+                  onClick={onClose}
                 >
-                  {l.save}
+                  {l.close}
                 </button>
-              ) : null}
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => {
-                  onClose();
-                  navigate(`/workspace/${workspaceId}`);
-                }}
-              >
-                {l.openWorkspace}
-              </button>
+
+                {isEditing && (
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={handleSave}
+                    disabled={isSaving || !name.trim()}
+                  >
+                    {isSaving ? 'Đang lưu...' : l.save}
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => {
+                    onClose();
+                    navigate(`/workspace/${workspaceId}`);
+                  }}
+                >
+                  {l.openWorkspace}
+                </button>
+              </div>
             </div>
           </div>
+        )}
+
+        {/* ── Tab: Members ─────────────────────────────────────────────────── */}
+        {tab === 'members' && (
+          <MembersTab
+            workspaceId={workspaceId}
+            isGuest={isGuest}
+            l={l}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Sub-component: MembersTab ─────────────────────────────────────────────────
+// Đặt ngay bên dưới WorkspaceSettingsModal trong cùng file DashboardPage.jsx
+function MembersTab({ workspaceId, isGuest, l }) {
+  const { user }                    = useAuthStore();
+  const [members,    setMembers]    = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [email,      setEmail]      = useState('');
+  const [role,       setRole]       = useState('member');
+  const [inviting,   setInviting]   = useState(false);
+  const [workspace,  setWorkspace]  = useState(null);
+
+  const loadMembers = async () => {
+    setLoading(true);
+    try {
+      const res = await workspaceService.getWorkspace(workspaceId);
+      const ws  = res?.data || res;
+      setWorkspace(ws);
+      setMembers([
+        { user: ws.owner, role: 'owner' },
+        ...(ws.members || []).filter(
+          (m) =>
+            (m.user?._id || m.user)?.toString() !==
+            (ws.owner?._id || ws.owner)?.toString()
+        ),
+      ]);
+    } catch {
+      setMembers([]);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => { loadMembers(); }, [workspaceId]);
+
+  const isAdmin = !isGuest && (
+    workspace?.owner?.toString() === user?._id?.toString() ||
+    workspace?.owner?._id?.toString() === user?._id?.toString() ||
+    (workspace?.members || []).some(
+      (m) =>
+        (m.user?._id || m.user)?.toString() === user?._id?.toString() &&
+        m.role === 'admin'
+    )
+  );
+
+  const handleInvite = async () => {
+    if (!email.trim()) return;
+    setInviting(true);
+    try {
+      await workspaceService.addMember(workspaceId, email.trim(), role);
+      toast.success('Đã mời thành viên!');
+      setEmail('');
+      loadMembers();
+    } catch (err) {
+      toast.error(err?.message || 'Không tìm thấy email này');
+    }
+    setInviting(false);
+  };
+
+  const handleRemove = async (userId) => {
+    try {
+      await workspaceService.removeMember(workspaceId, userId);
+      toast.success('Đã xoá thành viên');
+      loadMembers();
+    } catch (err) {
+      toast.error(err?.message || 'Không thể xoá');
+    }
+  };
+
+  const handleRoleChange = async (userId, newRole) => {
+    try {
+      await workspaceService.updateMemberRole(workspaceId, userId, newRole);
+      toast.success('Đã đổi role');
+      loadMembers();
+    } catch (err) {
+      toast.error(err?.message || 'Không thể đổi role');
+    }
+  };
+
+  const roleColor = { owner: '#fbbf24', admin: '#60a5fa', staff: '#a78bfa', member: 'rgba(255,255,255,.4)' };
+
+  return (
+    <div className="space-y-4">
+      {/* Invite form — chỉ hiện với admin */}
+      {isAdmin && (
+        <div style={{
+          padding: 14, borderRadius: 14,
+          border: '1px solid rgba(255,255,255,.08)',
+          background: 'rgba(255,255,255,.03)',
+        }}>
+          <p style={{
+            fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+            letterSpacing: '.08em', color: 'rgba(167,243,208,.5)', marginBottom: 10,
+          }}>
+            Mời thành viên
+          </p>
+          <input
+            className="input"
+            placeholder="Email người dùng"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleInvite()}
+            style={{ marginBottom: 8 }}
+          />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              className="input"
+              style={{ flex: 1 }}
+            >
+              <option value="member">Member</option>
+              <option value="admin">Admin</option>
+              <option value="staff">Staff</option>
+            </select>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={handleInvite}
+              disabled={inviting || !email.trim()}
+            >
+              {inviting ? '...' : 'Mời'}
+            </button>
+          </div>
         </div>
+      )}
+
+      {/* Member list */}
+      <div style={{ maxHeight: 280, overflowY: 'auto' }}>
+        {loading ? (
+          <p style={{ color: 'rgba(255,255,255,.4)', fontSize: 13, padding: 16 }}>
+            Đang tải...
+          </p>
+        ) : (
+          members.map((m, i) => {
+            const u     = m.user;
+            const uid   = u?._id || u;
+            const isYou = uid?.toString() === user?._id?.toString();
+            const canKick = isAdmin && m.role !== 'owner' && !isYou;
+            const canChangeRole =
+              (workspace?.owner?.toString() === user?._id?.toString() ||
+               workspace?.owner?._id?.toString() === user?._id?.toString()) &&
+              m.role !== 'owner';
+
+            return (
+              <div
+                key={i}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '10px 0',
+                  borderBottom: i < members.length - 1
+                    ? '1px solid rgba(255,255,255,.06)' : 'none',
+                }}
+              >
+                <div style={{
+                  width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+                  background: `hsl(${(u?.name || '').charCodeAt(0) * 17 % 360},60%,42%)`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 13, fontWeight: 700, color: 'white',
+                }}>
+                  {(u?.name || '?')[0].toUpperCase()}
+                </div>
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ color: 'white', fontSize: 13, fontWeight: 500, margin: 0 }}>
+                    {u?.name || String(uid)}
+                    {isYou && (
+                      <span style={{ color: 'rgba(255,255,255,.35)', fontSize: 11, marginLeft: 4 }}>
+                        (Bạn)
+                      </span>
+                    )}
+                  </p>
+                  <p style={{ color: 'rgba(255,255,255,.4)', fontSize: 11, margin: 0 }}>
+                    {u?.email || ''}
+                  </p>
+                </div>
+
+                {/* Role: dropdown nếu owner, badge nếu không */}
+                {canChangeRole ? (
+                  <select
+                    value={m.role}
+                    onChange={(e) => handleRoleChange(String(uid), e.target.value)}
+                    style={{
+                      padding: '3px 6px', borderRadius: 8, outline: 'none',
+                      border: '1px solid rgba(255,255,255,.15)',
+                      background: 'rgba(15,20,36,.9)',
+                      color: roleColor[m.role] || 'white',
+                      fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                    }}
+                  >
+                    <option value="member">Member</option>
+                    <option value="admin">Admin</option>
+                    <option value="staff">Staff</option>
+                  </select>
+                ) : (
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, borderRadius: 999,
+                    padding: '2px 8px', whiteSpace: 'nowrap',
+                    color: roleColor[m.role] || 'white',
+                    background: `${roleColor[m.role] || '#fff'}20`,
+                  }}>
+                    {m.role}
+                  </span>
+                )}
+
+                {/* Kick button */}
+                {canKick && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemove(String(uid))}
+                    title="Xoá khỏi workspace"
+                    style={{
+                      width: 24, height: 24, borderRadius: '50%', border: 'none',
+                      background: 'rgba(239,68,68,.2)', color: '#f87171',
+                      cursor: 'pointer', fontSize: 11, flexShrink: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );
@@ -558,13 +909,16 @@ function WorkspaceSection({
                     >
                       {l.workspaceMembers}
                     </button>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm !rounded-xl !border-white/8 !bg-white/5 !px-2.5 !py-1.5 !text-[11px]"
-                      onClick={() => onOpenSettings?.(workspace)}
-                    >
-                      {l.workspaceSettings}
-                    </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm !rounded-xl !border-white/8 !bg-white/5 !px-2.5 !py-1.5 !text-[11px]"
+                        onClick={() => {
+                          // Mở settings modal rồi tự động chuyển sang tab members
+                          onOpenSettings?.(workspace, 'members');
+                        }}
+                      >
+                        {l.workspaceMembers}
+                      </button>
                     <Link
                       to={`/workspace/${workspaceId}`}
                       className="btn btn-secondary btn-sm !rounded-xl !border-white/8 !bg-white/5 !px-2.5 !py-1.5 !text-[11px]"
@@ -617,6 +971,7 @@ export default function DashboardPage() {
   const l = L[lang] || L.vi;
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(null);
   const [settingsWorkspace, setSettingsWorkspace] = useState(null);
+  const [settingsTab, setSettingsTab] = useState('info');
   const [state, setState] = useState({
     status: 'loading',
     workspaces: [],
@@ -800,7 +1155,10 @@ export default function DashboardPage() {
               boardsByWorkspace={boardsByWorkspace}
               l={l}
               guestWorkspaceIds={guestWorkspaceIds}
-              onOpenSettings={setSettingsWorkspace}
+              onOpenSettings={(ws, tab = 'info') => {
+                setSettingsWorkspace(ws);
+                setSettingsTab(tab);
+              }}
             />
           </>
         )}
@@ -814,6 +1172,7 @@ export default function DashboardPage() {
         onClose={() => setSettingsWorkspace(null)}
         onUpdated={handleWorkspaceUpdated}
         onDeleted={handleWorkspaceDeleted}
+        defaultTab={settingsTab}
       />
     </div>
   );

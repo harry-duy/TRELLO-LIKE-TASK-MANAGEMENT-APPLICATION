@@ -8,6 +8,9 @@ import { useUiStore } from '@store/uiStore';
 import authService from '@services/authService';
 import apiClient from '@config/api';
 import toast from 'react-hot-toast';
+import notificationService from '@services/notificationService';
+import { getSocket } from '@config/socket';
+
 
 /* ─────────────── i18n ─────────────── */
 const T = {
@@ -334,103 +337,334 @@ function SettingsModal({ t, onClose }) {
 const ACTION_ICON = { card_created:'📋', card_updated:'✏️', card_deleted:'🗑️', card_moved:'🔀', card_completed:'✅', comment_added:'💬', member_assigned:'👤', board_created:'📋', board_updated:'✏️', workspace_member_added:'🏢', due_date_changed:'⏰' };
 function timeAgo(d) { const m=Math.floor((Date.now()-new Date(d))/60000); if(m<1)return'just now'; if(m<60)return`${m}m`; const h=Math.floor(m/60); if(h<24)return`${h}h`; const dd=Math.floor(h/24); if(dd<7)return`${dd}d`; return new Date(d).toLocaleDateString(); }
 
-function NotificationsModal({ t, onClose }) {
-  const { user } = useAuthStore();
-  const [loading, setLoading] = useState(true);
-  const [acts, setActs] = useState([]);
-  const [readIds, setReadIds] = useState(() => { try { return new Set(JSON.parse(localStorage.getItem('pfd_read')||'[]')); } catch { return new Set(); } });
-  const [tab, setTab] = useState('all');
+function NotificationsModal({ t, lang, onClose, onUnreadChange }) {
+  const [notifications, setNotifications] = useState([]);
+  const [loading,       setLoading]       = useState(true);
+  const [unreadCount,   setUnreadCount]   = useState(0);
+  const [tab,           setTab]           = useState('all');
 
+  // Icon theo type
+  const TYPE_ICON = {
+    member_added_workspace:   '🏢',
+    member_added_card:        '👤',
+    member_removed_workspace: '🚫',
+    member_removed_card:      '👋',
+    board_updated:            '✏️',
+    card_created:             '📋',
+    card_updated:             '📝',
+    card_moved:               '🔀',
+    card_completed:           '✅',
+    comment_added:            '💬',
+    workspace_updated:        '🏢',
+  };
+
+  // Load từ API
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const wsRes = await apiClient.get('/workspaces');
-      const wsList = Array.isArray(wsRes?.data||wsRes) ? (wsRes?.data||wsRes) : [];
-      const all = [];
-      await Promise.all(wsList.slice(0,4).map(async ws => {
-        try {
-          const r = await apiClient.get(`/activities/workspace/${ws._id}?limit=25`);
-          const list = r?.data?.activities || r?.data || r || [];
-          if (Array.isArray(list)) all.push(...list);
-        } catch {
-          // Ignore per-workspace notification failures and keep loading the rest.
-        }
-      }));
-      setActs(all.filter(a=>a.actor?._id!==user?._id).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).slice(0,40));
-    } catch { setActs([]); }
+      const res  = await notificationService.getAll({ limit: 30 });
+      const data = res?.notifications || [];
+      const cnt  = res?.unreadCount   ?? 0;
+      setNotifications(data);
+      setUnreadCount(cnt);
+      onUnreadChange?.(cnt);
+    } catch {
+      setNotifications([]);
+      setUnreadCount(0);
+    }
     setLoading(false);
-  }, [user?._id]);
+  }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
-  const markOne = id => setReadIds(p => { const n=new Set([...p,id]); localStorage.setItem('pfd_read',JSON.stringify([...n])); return n; });
-  const markAll = () => { const n=new Set([...readIds,...acts.map(a=>a._id)]); localStorage.setItem('pfd_read',JSON.stringify([...n])); setReadIds(n); };
+  // ── Socket: lắng nghe notification:new real-time ─────────────────────────
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
 
-  const unread  = acts.filter(a=>!readIds.has(a._id)).length;
-  const shown   = tab==='unread' ? acts.filter(a=>!readIds.has(a._id)) : acts;
+    const handleNew = (notif) => {
+      setNotifications((prev) => [notif, ...prev]);
+      setUnreadCount((prev) => {
+        const next = prev + 1;
+        onUnreadChange?.(next);
+        return next;
+      });
+    };
+
+    socket.on('notification:new', handleNew);
+    return () => socket.off('notification:new', handleNew);
+  }, []);
+
+  // Đánh dấu đã đọc
+  const handleMarkRead = async (id) => {
+    await notificationService.markRead(id);
+    setNotifications((prev) =>
+      prev.map((n) => (n._id === id ? { ...n, isRead: true } : n))
+    );
+    setUnreadCount((prev) => {
+      const next = Math.max(prev - 1, 0);
+      onUnreadChange?.(next);
+      return next;
+    });
+  };
+
+  // Đánh dấu tất cả đã đọc
+  const handleMarkAll = async () => {
+    await notificationService.markAllRead();
+    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    setUnreadCount(0);
+    onUnreadChange?.(0);
+  };
+
+  // Xoá tất cả
+  const handleClearAll = async () => {
+    if (!window.confirm(lang === 'vi' ? 'Xoá tất cả thông báo?' : 'Clear all notifications?'))
+      return;
+    await notificationService.clearAll();
+    setNotifications([]);
+    setUnreadCount(0);
+    onUnreadChange?.(0);
+  };
+
+  // Filter theo tab
+  const shown = tab === 'unread'
+    ? notifications.filter((n) => !n.isRead)
+    : notifications;
 
   return (
     <Modal title={t.notifTitle} onClose={onClose} maxW="max-w-md">
-      <div style={{ padding:'10px 20px', display:'flex', alignItems:'center', justifyContent:'space-between', borderBottom:'1px solid rgba(255,255,255,.07)' }}>
-        <div style={{ display:'flex', gap:4, background:'rgba(255,255,255,.05)', borderRadius:999, padding:3 }}>
-          {[{k:'all',l:t.tabAll},{k:'unread',l:unread>0?`${t.tabUnread} (${unread})`:t.tabUnread}].map(({k,l})=>(
-            <button key={k} type="button" onClick={()=>setTab(k)}
-              style={{ padding:'4px 12px', borderRadius:999, border:'none', cursor:'pointer', fontSize:12, fontWeight:600, transition:'all .15s', background:tab===k?'white':'transparent', color:tab===k?'#0f172a':'rgba(255,255,255,.6)' }}>
-              {l}
+      {/* ── Tab bar + actions ─────────────────────────────────────────── */}
+      <div style={{
+        padding: '10px 20px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        borderBottom: '1px solid rgba(255,255,255,.07)',
+      }}>
+        {/* Tabs */}
+        <div style={{
+          display: 'flex', gap: 4,
+          background: 'rgba(255,255,255,.05)', borderRadius: 999, padding: 3,
+        }}>
+          {[
+            { key: 'all',    label: lang === 'vi' ? 'Tất cả'   : 'All' },
+            { key: 'unread', label: lang === 'vi'
+              ? `Chưa đọc${unreadCount > 0 ? ` (${unreadCount})` : ''}`
+              : `Unread${unreadCount  > 0 ? ` (${unreadCount})` : ''}`,
+            },
+          ].map(({ key, label }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setTab(key)}
+              style={{
+                padding: '4px 12px', borderRadius: 999, border: 'none',
+                cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                transition: 'all .15s',
+                background: tab === key ? 'white'              : 'transparent',
+                color:      tab === key ? '#0f172a'            : 'rgba(255,255,255,.6)',
+              }}
+            >
+              {label}
             </button>
           ))}
         </div>
-        {unread>0 && <button type="button" onClick={markAll} style={{ background:'none', border:'none', cursor:'pointer', fontSize:11, color:'#34d399', fontWeight:500 }}>{t.markAllRead}</button>}
+
+        {/* Actions */}
+        <div style={{ display: 'flex', gap: 8 }}>
+          {unreadCount > 0 && (
+            <button
+              type="button"
+              onClick={handleMarkAll}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                fontSize: 11, color: '#34d399', fontWeight: 500,
+              }}
+            >
+              {lang === 'vi' ? 'Đọc tất cả' : 'Mark all read'}
+            </button>
+          )}
+          {notifications.length > 0 && (
+            <button
+              type="button"
+              onClick={handleClearAll}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                fontSize: 11, color: '#f87171', fontWeight: 500,
+              }}
+            >
+              {lang === 'vi' ? 'Xoá tất cả' : 'Clear all'}
+            </button>
+          )}
+        </div>
       </div>
 
-      <div style={{ maxHeight:420, overflowY:'auto' }}>
+      {/* ── Notification list ─────────────────────────────────────────── */}
+      <div style={{ maxHeight: 420, overflowY: 'auto' }}>
         {loading ? (
-          <div style={{ padding:'50px 0', display:'flex', flexDirection:'column', alignItems:'center', gap:12 }}>
-            <div style={{ width:32, height:32, borderRadius:'50%', border:'3px solid rgba(52,211,153,.3)', borderTopColor:'#34d399', animation:'pfd-spin .8s linear infinite' }}/>
-            <p style={{ color:'rgba(255,255,255,.4)', fontSize:13 }}>{t.loadingNotif}</p>
+          <div style={{
+            padding: '50px 0', display: 'flex',
+            flexDirection: 'column', alignItems: 'center', gap: 12,
+          }}>
+            <div style={{
+              width: 32, height: 32, borderRadius: '50%',
+              border: '3px solid rgba(52,211,153,.3)',
+              borderTopColor: '#34d399',
+              animation: 'pfd-spin .8s linear infinite',
+            }}/>
+            <p style={{ color: 'rgba(255,255,255,.4)', fontSize: 13 }}>
+              {lang === 'vi' ? 'Đang tải...' : 'Loading...'}
+            </p>
           </div>
-        ) : shown.length===0 ? (
-          <div style={{ padding:'60px 0', display:'flex', flexDirection:'column', alignItems:'center', gap:12 }}>
-            <div style={{ width:52, height:52, borderRadius:14, background:'rgba(255,255,255,.05)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22 }}>🔔</div>
-            <p style={{ color:'rgba(255,255,255,.35)', fontSize:13 }}>{t.noNotif}</p>
+        ) : shown.length === 0 ? (
+          <div style={{
+            padding: '60px 0',
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', gap: 12,
+          }}>
+            <div style={{
+              width: 52, height: 52, borderRadius: 14,
+              background: 'rgba(255,255,255,.05)',
+              display: 'flex', alignItems: 'center',
+              justifyContent: 'center', fontSize: 22,
+            }}>
+              🔔
+            </div>
+            <p style={{ color: 'rgba(255,255,255,.35)', fontSize: 13 }}>
+              {lang === 'vi' ? 'Không có thông báo' : 'No notifications'}
+            </p>
           </div>
-        ) : shown.map(a => {
-          const isRead = readIds.has(a._id);
-          const actor  = a.actor?.name || 'Someone';
-          const action = t[a.action] || t.unknown_action;
-          const target = a.metadata?.cardTitle || a.metadata?.boardName || a.metadata?.listName || '';
-          const icon   = ACTION_ICON[a.action] || '📣';
-          return (
-            <div key={a._id} className="pfd-notif-row"
-              style={{ display:'flex', alignItems:'flex-start', gap:12, padding:'14px 20px', position:'relative', background:isRead?'transparent':'rgba(52,211,153,.04)' }}>
-              {!isRead && <span style={{ position:'absolute', left:6, top:'50%', transform:'translateY(-50%)', width:6, height:6, borderRadius:'50%', background:'#34d399' }}/>}
-              <div style={{ width:36, height:36, borderRadius:12, background:isRead?'rgba(255,255,255,.06)':'rgba(52,211,153,.15)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>{icon}</div>
-              <div style={{ flex:1, minWidth:0 }}>
-                <p style={{ fontSize:13, color:'rgba(255,255,255,.85)', lineHeight:1.4, margin:0 }}>
-                  <strong style={{ color:'white' }}>{actor}</strong>{' '}{action}
-                  {target && <span style={{ color:'rgba(167,243,208,.7)' }}>{` "${target}"`}</span>}
-                </p>
-                <p style={{ fontSize:11, color:'rgba(255,255,255,.3)', marginTop:3, margin:0 }}>{timeAgo(a.createdAt)}</p>
-              </div>
-              <div className="pfd-notif-actions" style={{ display:'flex', gap:4, flexShrink:0 }}>
-                {!isRead && (
-                  <button type="button" title={t.markRead} onClick={()=>markOne(a._id)}
-                    style={{ width:24, height:24, borderRadius:8, border:'none', cursor:'pointer', background:'rgba(52,211,153,.15)', color:'#34d399', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1.5 5L4 7.5L8.5 2.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        ) : (
+          shown.map((notif) => {
+            const icon = TYPE_ICON[notif.type] || '📣';
+            const ago  = timeAgo(notif.createdAt);
+
+            return (
+              <div
+                key={notif._id}
+                style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 12,
+                  padding: '14px 20px', position: 'relative',
+                  background: notif.isRead ? 'transparent' : 'rgba(52,211,153,.04)',
+                  cursor: notif.link ? 'pointer' : 'default',
+                  transition: 'background .15s',
+                }}
+                onClick={() => {
+                  if (!notif.isRead) handleMarkRead(notif._id);
+                  if (notif.link) {
+                    onClose();
+                    window.location.href = notif.link;
+                  }
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(255,255,255,.04)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background =
+                    notif.isRead ? 'transparent' : 'rgba(52,211,153,.04)';
+                }}
+              >
+                {/* Unread dot */}
+                {!notif.isRead && (
+                  <span style={{
+                    position: 'absolute', left: 6, top: '50%',
+                    transform: 'translateY(-50%)',
+                    width: 6, height: 6, borderRadius: '50%',
+                    background: '#34d399',
+                  }}/>
+                )}
+
+                {/* Icon */}
+                <div style={{
+                  width: 38, height: 38, borderRadius: 12, flexShrink: 0,
+                  background: notif.isRead
+                    ? 'rgba(255,255,255,.06)' : 'rgba(52,211,153,.15)',
+                  display: 'flex', alignItems: 'center',
+                  justifyContent: 'center', fontSize: 17,
+                }}>
+                  {icon}
+                </div>
+
+                {/* Content */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{
+                    fontSize: 13, fontWeight: notif.isRead ? 400 : 600,
+                    color: 'rgba(255,255,255,.9)',
+                    lineHeight: 1.4, margin: 0,
+                  }}>
+                    {notif.title}
+                  </p>
+                  <p style={{
+                    fontSize: 12, color: 'rgba(255,255,255,.55)',
+                    marginTop: 3, lineHeight: 1.45,
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden',
+                    margin: '3px 0 0',
+                  }}>
+                    {notif.message}
+                  </p>
+                  <p style={{
+                    fontSize: 11, color: 'rgba(255,255,255,.3)',
+                    marginTop: 4, margin: '4px 0 0',
+                  }}>
+                    {ago}
+                    {notif.actor?.name && (
+                      <span style={{ marginLeft: 6, color: 'rgba(167,243,208,.5)' }}>
+                        · {notif.actor.name}
+                      </span>
+                    )}
+                  </p>
+                </div>
+
+                {/* Mark read button */}
+                {!notif.isRead && (
+                  <button
+                    type="button"
+                    title={lang === 'vi' ? 'Đánh dấu đã đọc' : 'Mark as read'}
+                    onClick={(e) => { e.stopPropagation(); handleMarkRead(notif._id); }}
+                    style={{
+                      width: 24, height: 24, borderRadius: 8, border: 'none',
+                      cursor: 'pointer', flexShrink: 0,
+                      background: 'rgba(52,211,153,.15)', color: '#34d399',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                      <path d="M1.5 5L4 7.5L8.5 2.5"
+                        stroke="currentColor" strokeWidth="1.4"
+                        strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
                   </button>
                 )}
               </div>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
 
-      <div style={{ padding:'10px 20px', borderTop:'1px solid rgba(255,255,255,.07)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-        <span style={{ fontSize:11, color:'rgba(255,255,255,.3)' }}>{t.notifCount(acts.length)}</span>
-        <button type="button" onClick={load} style={{ background:'none', border:'none', cursor:'pointer', fontSize:11, color:'rgba(52,211,153,.7)', fontWeight:500 }}>↻ Refresh</button>
+      {/* Footer */}
+      <div style={{
+        padding: '10px 20px',
+        borderTop: '1px solid rgba(255,255,255,.07)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <span style={{ fontSize: 11, color: 'rgba(255,255,255,.3)' }}>
+          {notifications.length}{' '}
+          {lang === 'vi' ? 'thông báo' : 'notification(s)'}
+        </span>
+        <button
+          type="button"
+          onClick={load}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            fontSize: 11, color: 'rgba(52,211,153,.7)', fontWeight: 500,
+          }}
+        >
+          ↻ {lang === 'vi' ? 'Làm mới' : 'Refresh'}
+        </button>
       </div>
-
-      <style>{`.pfd-notif-row:hover{background:rgba(255,255,255,.04)!important}.pfd-notif-actions{opacity:0;transition:opacity .15s}.pfd-notif-row:hover .pfd-notif-actions{opacity:1}`}</style>
     </Modal>
   );
 }
@@ -448,15 +682,12 @@ export default function ProfileDropdown({ onLogout }) {
 
   // Load badge count
   useEffect(() => {
-    const stored = new Set(JSON.parse(localStorage.getItem('pfd_read')||'[]'));
-    apiClient.get('/workspaces').then(async r => {
-      const ws = Array.isArray(r?.data||r) ? (r?.data||r) : [];
-      if (!ws.length) return;
-      const ar = await apiClient.get(`/activities/workspace/${ws[0]._id}?limit=30`);
-      const list = ar?.data?.activities || ar?.data || ar || [];
-      if (!Array.isArray(list)) return;
-      setUnread(Math.min(list.filter(a=>a.actor?._id!==user?._id&&!stored.has(a._id)).length, 99));
-    }).catch(()=>{});
+    notificationService.getUnreadCount()
+      .then((res) => {
+        const count = res?.count ?? res?.data?.count ?? 0;
+        setUnread(Math.min(count, 99));
+      })
+      .catch(() => {});
   }, [user?._id]);
 
   const items = [
@@ -543,8 +774,14 @@ export default function ProfileDropdown({ onLogout }) {
 
       {modal==='profile'       && <ProfileModal       t={t}           onClose={()=>setModal(null)} />}
       {modal==='settings'      && <SettingsModal      t={t}           onClose={()=>setModal(null)} />}
-      {modal==='notifications' && <NotificationsModal t={t} lang={lang} onClose={()=>{ setModal(null); setUnread(0); }} />}
-
+      {modal === 'notifications' && (
+        <NotificationsModal
+          t={t}
+          lang={lang}
+          onClose={() => { setModal(null); }}
+          onUnreadChange={(count) => setUnread(Math.min(count, 99))}
+        />
+      )}
       <style>{`
         @keyframes pfd-drop { from{opacity:0;transform:translateY(-10px) scale(.96)} to{opacity:1;transform:translateY(0) scale(1)} }
         @keyframes pfd-in   { from{opacity:0;transform:scale(.93) translateY(16px)} to{opacity:1;transform:scale(1) translateY(0)} }

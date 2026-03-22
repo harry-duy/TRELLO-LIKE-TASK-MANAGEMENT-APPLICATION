@@ -7,6 +7,7 @@ const List      = require('../models/list.model');
 const Card      = require('../models/card.model');
 const Activity  = require('../models/activity.model');
 const { asyncHandler, AppError } = require('../middleware/errorHandler');
+const notify    = require('../utils/notifyHelper');
 
 const getAccessibleWorkspaceIds = async (user) => {
   if (user.role === 'admin') return null;
@@ -119,6 +120,27 @@ exports.updateBoard = asyncHandler(async (req, res, next) => {
     board: board._id,   workspace: board.workspace,
     metadata: updates,
   });
+
+   const workspace = await Workspace.findById(board.workspace)
+    .populate('members.user', '_id');
+
+  if (workspace) {
+    const allMemberIds = [
+      workspace.owner,
+      ...workspace.members.map((m) => m.user?._id || m.user),
+    ].filter(Boolean);
+
+    const io = req.app?.get?.('io');
+    await notify(io, {
+      actor:      req.user._id,
+      recipients: allMemberIds,
+      type:       'board_updated',
+      title:      'Board được cập nhật',
+      message:    `${req.user.name} đã cập nhật board "${board.name}"`,
+      link:       `/board/${board._id}`,
+      metadata:   { boardId: board._id, boardName: board.name, updates },
+    });
+  }
 
   const updated = await Board.findById(board._id)
     .populate('workspace')

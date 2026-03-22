@@ -11,6 +11,7 @@ import toast from 'react-hot-toast';
 import { useTranslation } from '@hooks/useTranslation';
 import LabelManager, { LabelChip } from '@components/board/LabelManager';
 import DueDateBadge from '@components/board/DueDateBadge';
+import apiClient from '@config/api';
 
 export default function CardModal({ cardId, boardId, onClose }) {
   const queryClient = useQueryClient();
@@ -22,6 +23,8 @@ export default function CardModal({ cardId, boardId, onClose }) {
   const [checklistText, setChecklistText] = useState('');
   const [aiChecklist,   setAiChecklist]   = useState([]);
   const [moveTargets,   setMoveTargets]   = useState({});
+  const [wsMembers,      setWsMembers]      = useState([]);  // members của workspace
+  const [loadingMembers, setLoadingMembers] = useState(false);
 
   const { data: card, isLoading } = useQuery({
     queryKey: ['card', cardId],
@@ -50,6 +53,79 @@ export default function CardModal({ cardId, boardId, onClose }) {
       dueDate: card.dueDate ? card.dueDate.slice(0, 10) : '',
     });
   }, [card]);
+
+  useEffect(() => {
+    if (!boardId) return;
+
+    const loadBoardMembers = async () => {
+      setLoadingMembers(true);
+      try {
+        // ── Bước 1: Lấy thông tin board → tìm workspaceId ──────────────────
+        const boardRes  = await boardService.getBoardDetails(boardId);
+        const boardData = boardRes?.data ?? boardRes;
+        const workspaceId =
+          boardData?.workspace?._id || boardData?.workspace;
+
+        if (!workspaceId) {
+          setWsMembers([]);
+          return;
+        }
+
+        // ── Bước 2: Lấy workspace → lấy danh sách members ──────────────────
+        const wsRes = await apiClient.get(`/workspaces/${workspaceId}`);
+        const ws    = wsRes?.data ?? wsRes;
+
+        // ── Bước 3: Gộp owner + members, LOẠI TRÙNG ────────────────────────
+        const ownerId   = (ws.owner?._id || ws.owner)?.toString();
+        const ownerUser = ws.owner;
+
+        // Lọc bỏ owner ra khỏi members[] để tránh hiện 2 lần
+        const otherMembers = (ws.members || [])
+          .filter(
+            (m) =>
+              (m.user?._id || m.user)?.toString() !== ownerId
+          )
+          .map((m) => m.user)
+          .filter(Boolean);
+
+        // Gộp: owner đứng đầu, sau đó là các member khác
+        const merged = [ownerUser, ...otherMembers].filter(Boolean);
+
+        // ── Bước 4: Deduplicate lần cuối theo _id (an toàn tuyệt đối) ───────
+        const seen      = new Set();
+        const memberList = merged.filter((u) => {
+          const id = (u?._id || u)?.toString();
+          if (!id || seen.has(id)) return false;
+          seen.add(id);
+          return true;
+        });
+
+        setWsMembers(memberList);
+      } catch (err) {
+        console.error('loadBoardMembers error:', err);
+        setWsMembers([]);
+      }
+      setLoadingMembers(false);
+    };
+
+    loadBoardMembers();
+  }, [boardId]);
+
+  // ── Thêm hàm toggle assignee:
+  const handleToggleAssignee = async (userId) => {
+    const currentAssignees = card?.assignees?.map((a) => a._id || a) || [];
+    const isAssigned = currentAssignees.some(
+      (id) => id?.toString() === userId?.toString()
+    );
+
+    const newAssignees = isAssigned
+      ? currentAssignees.filter((id) => id?.toString() !== userId?.toString())
+      : [...currentAssignees, userId];
+
+    await cardService.update(cardId, { assignees: newAssignees });
+    queryClient.invalidateQueries(['card', cardId]);
+    queryClient.invalidateQueries(['board', boardId]);
+  };
 
   const updateMutation = useMutation({
     mutationFn: updates => cardService.update(cardId, updates),
@@ -157,6 +233,95 @@ export default function CardModal({ cardId, boardId, onClose }) {
                 🏷 {lang === 'vi' ? 'Nhãn' : 'Labels'}
               </span>
             } />
+        </div>
+
+        {/* ─── Assignees ─── */}
+        <div className="mb-5">
+          <h3 className="text-sm uppercase tracking-[0.24em] text-emerald-100/70 mb-3">
+            {lang === 'vi' ? 'Thành viên được giao' : 'Assignees'}
+          </h3>
+
+          {loadingMembers ? (
+            <p style={{ fontSize: 12, color: 'rgba(255,255,255,.4)' }}>
+              {lang === 'vi' ? 'Đang tải...' : 'Loading...'}
+            </p>
+          ) : wsMembers.length === 0 ? (
+            <p style={{ fontSize: 12, color: 'rgba(255,255,255,.3)', fontStyle: 'italic' }}>
+              {lang === 'vi'
+                ? 'Workspace chưa có thành viên nào'
+                : 'No workspace members found'}
+            </p>
+          ) : (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {wsMembers.map((member) => {
+                const memberId   = member?._id || member;
+                const memberName = member?.name  || String(memberId);
+                const isAssigned = (card?.assignees || []).some(
+                  (a) => (a?._id || a)?.toString() === memberId?.toString()
+                );
+
+                return (
+                  <button
+                    key={String(memberId)}
+                    type="button"
+                    onClick={() => handleToggleAssignee(memberId)}
+                    title={isAssigned
+                      ? (lang === 'vi' ? 'Bỏ giao việc' : 'Unassign')
+                      : (lang === 'vi' ? 'Giao việc'    : 'Assign')}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 7,
+                      padding: '5px 10px', borderRadius: 999,
+                      border: '1px solid',
+                      borderColor: isAssigned
+                        ? 'rgba(52,211,153,.5)' : 'rgba(255,255,255,.12)',
+                      background: isAssigned
+                        ? 'rgba(52,211,153,.15)' : 'rgba(255,255,255,.06)',
+                      cursor: 'pointer', transition: 'all .15s',
+                    }}
+                  >
+                    {/* Avatar */}
+                    {member?.avatar ? (
+                      <img
+                        src={member.avatar}
+                        alt={memberName}
+                        style={{
+                          width: 22, height: 22, borderRadius: '50%', objectFit: 'cover',
+                        }}
+                      />
+                    ) : (
+                      <div style={{
+                        width: 22, height: 22, borderRadius: '50%',
+                        background: `hsl(${memberName.charCodeAt(0) * 17 % 360},60%,42%)`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 10, fontWeight: 700, color: 'white', flexShrink: 0,
+                      }}>
+                        {memberName[0].toUpperCase()}
+                      </div>
+                    )}
+
+                    {/* Name */}
+                    <span style={{
+                      fontSize: 12, fontWeight: 500,
+                      color: isAssigned ? '#6ee7b7' : 'rgba(255,255,255,.75)',
+                      maxWidth: 120, overflow: 'hidden',
+                      textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {memberName}
+                    </span>
+
+                    {/* Check icon nếu đã giao */}
+                    {isAssigned && (
+                      <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                        <path d="M1.5 5.5L4 8L9.5 2.5"
+                          stroke="#34d399" strokeWidth="1.6" strokeLinecap="round"
+                          strokeLinejoin="round"/>
+                      </svg>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* ─── Due date ─── */}
