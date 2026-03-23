@@ -4,7 +4,6 @@ const Workspace = require('../models/workspace.model');
 const Activity = require('../models/activity.model');
 const { asyncHandler, AppError } = require('../middleware/errorHandler');
 const notify    = require('../utils/notifyHelper');
-const Workspace = require('../models/workspace.model');
 
 const ensureBoardAccess = async (boardId, user) => {
   const board = await Board.findById(boardId).select('workspace');
