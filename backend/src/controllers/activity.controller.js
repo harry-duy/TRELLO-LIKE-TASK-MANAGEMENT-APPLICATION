@@ -1,143 +1,126 @@
 const mongoose = require('mongoose');
 const Activity = require('../models/activity.model');
-const { asyncHandler } = require('../middleware/errorHandler');
-const { AppError } = require('../middleware/errorHandler');
+const { asyncHandler, AppError } = require('../middleware/errorHandler');
 
-// @desc    Get board activities
+// @desc    Get board activities (paginated)
 // @route   GET /api/activities/board/:boardId
-// @access  Private
 exports.getBoardActivities = asyncHandler(async (req, res, next) => {
   const { boardId } = req.params;
-  const { page = 1, limit = 50 } = req.query;
+  const page  = Math.max(parseInt(req.query.page  || '1',  10), 1);
+  const limit = Math.min(parseInt(req.query.limit || '20', 10), 100);
+  const skip  = (page - 1) * limit;
 
-  const activities = await Activity.getBoardActivities(boardId, {
-    page: parseInt(page),
-    limit: parseInt(limit),
-  });
-
-  const total = await Activity.countDocuments({ board: boardId });
+  const [activities, total] = await Promise.all([
+    Activity.find({ board: boardId })
+      .populate('actor', 'name email avatar')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit),
+    Activity.countDocuments({ board: boardId }),
+  ]);
 
   res.status(200).json({
     success: true,
     data: {
       activities,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        pages: Math.ceil(total / limit),
-      },
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
     },
   });
 });
 
-// @desc    Get workspace activities
+// @desc    Get workspace activities (paginated)
 // @route   GET /api/activities/workspace/:workspaceId
-// @access  Private
 exports.getWorkspaceActivities = asyncHandler(async (req, res, next) => {
   const { workspaceId } = req.params;
-  const { page = 1, limit = 50 } = req.query;
+  const page  = Math.max(parseInt(req.query.page  || '1',  10), 1);
+  const limit = Math.min(parseInt(req.query.limit || '20', 10), 100);
+  const skip  = (page - 1) * limit;
 
-  const activities = await Activity.getWorkspaceActivities(workspaceId, {
-    page: parseInt(page),
-    limit: parseInt(limit),
-  });
-
-  const total = await Activity.countDocuments({ workspace: workspaceId });
+  const [activities, total] = await Promise.all([
+    Activity.find({ workspace: workspaceId })
+      .populate('actor', 'name email avatar')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit),
+    Activity.countDocuments({ workspace: workspaceId }),
+  ]);
 
   res.status(200).json({
     success: true,
     data: {
       activities,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        pages: Math.ceil(total / limit),
-      },
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
     },
   });
 });
 
 // @desc    Get card activities
 // @route   GET /api/activities/card/:cardId
-// @access  Private
 exports.getCardActivities = asyncHandler(async (req, res, next) => {
-  const { cardId } = req.params;
-
-  const activities = await Activity.getCardActivities(cardId);
-
-  res.status(200).json({
-    success: true,
-    data: activities,
-  });
+  const activities = await Activity.getCardActivities(req.params.cardId);
+  res.status(200).json({ success: true, data: activities });
 });
 
-// @desc    Lấy dữ liệu thống kê năng suất cho Workspace
+// @desc    Workspace analytics (completion trend + user performance)
 // @route   GET /api/activities/analytics/:workspaceId
 exports.getWorkspaceAnalytics = asyncHandler(async (req, res, next) => {
   const { workspaceId } = req.params;
-  const { days = 7 } = req.query; // Mặc định thống kê trong 7 ngày qua
-
+  const days  = Math.min(Math.max(parseInt(req.query.days || '7', 10), 1), 90);
   const startDate = new Date();
-  startDate.setDate(startDate.getDate() - parseInt(days));
+  startDate.setHours(0, 0, 0, 0);
+  startDate.setDate(startDate.getDate() - (days - 1));
 
-  // 1. Thống kê số thẻ hoàn thành theo ngày
-  const completionTrend = await Activity.aggregate([
+  // ── Completion trend ────────────────────────────────────────────────
+  const rawTrend = await Activity.aggregate([
     {
       $match: {
         workspace: new mongoose.Types.ObjectId(workspaceId),
         action: 'card_completed',
-        createdAt: { $gte: startDate }
-      }
+        createdAt: { $gte: startDate },
+      },
     },
     {
       $group: {
-        _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
-        count: { $sum: 1 }
-      }
+        _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+        count: { $sum: 1 },
+      },
     },
-    { $sort: { "_id": 1 } }
+    { $sort: { _id: 1 } },
   ]);
 
-  // 2. Thống kê hiệu suất theo thành viên (Ai hoàn thành nhiều nhất)
+  const trendMap = new Map(rawTrend.map((item) => [item._id, item.count]));
+  const completionTrend = [];
+  for (let i = 0; i < days; i++) {
+    const d = new Date(startDate);
+    d.setDate(startDate.getDate() + i);
+    const key = d.toISOString().slice(0, 10);
+    completionTrend.push({ date: key, count: trendMap.get(key) || 0 });
+  }
+
+  // ── User performance ────────────────────────────────────────────────
   const userPerformance = await Activity.aggregate([
     {
       $match: {
         workspace: new mongoose.Types.ObjectId(workspaceId),
         action: 'card_completed',
-        createdAt: { $gte: startDate }
-      }
+        createdAt: { $gte: startDate },
+      },
     },
-    {
-      $group: {
-        _id: "$actor",
-        completedCount: { $sum: 1 }
-      }
-    },
-    {
-      $lookup: {
-        from: "users",
-        localField: "_id",
-        foreignField: "_id",
-        as: "userInfo"
-      }
-    },
-    { $unwind: "$userInfo" },
+    { $group: { _id: '$actor', completedCount: { $sum: 1 } } },
+    { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'userInfo' } },
+    { $unwind: '$userInfo' },
     {
       $project: {
-        name: "$userInfo.name",
-        count: "$completedCount"
-      }
+        name:  '$userInfo.name',
+        email: '$userInfo.email',
+        count: '$completedCount',
+      },
     },
-    { $sort: { count: -1 } }
+    { $sort: { count: -1 } },
   ]);
 
   res.status(200).json({
     success: true,
-    data: {
-      completionTrend,
-      userPerformance
-    }
+    data: { days, completionTrend, userPerformance },
   });
 });

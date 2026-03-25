@@ -1,5 +1,6 @@
 // backend/src/controllers/board.controller.js
-// ✅ Thêm toggleStar export mới — không đổi các hàm cũ
+// ✅ Thêm pagination/filter/sort cho getBoards
+// ✅ toggleStar export
 
 const Board     = require('../models/board.model');
 const Workspace = require('../models/workspace.model');
@@ -17,13 +18,13 @@ const getAccessibleWorkspaceIds = async (user) => {
   return workspaces.map((w) => w._id);
 };
 
-// @desc  Get boards the current user can access
+// @desc  Get boards the current user can access (with pagination, filter, sort)
 // @route GET /api/boards
 exports.getBoards = asyncHandler(async (req, res) => {
   const query = {};
   const accessibleWorkspaceIds = await getAccessibleWorkspaceIds(req.user);
   if (accessibleWorkspaceIds && accessibleWorkspaceIds.length === 0)
-    return res.status(200).json({ success: true, data: [] });
+    return res.status(200).json({ success: true, data: [], meta: { total: 0 } });
 
   if (req.query.workspaceId) {
     query.workspace = req.query.workspaceId;
@@ -32,14 +33,11 @@ exports.getBoards = asyncHandler(async (req, res) => {
   }
 
   if (accessibleWorkspaceIds && req.query.workspaceId) {
-    const ok = accessibleWorkspaceIds.some(
-      (id) => id.toString() === req.query.workspaceId
-    );
-    if (!ok) return res.status(200).json({ success: true, data: [] });
+    const ok = accessibleWorkspaceIds.some((id) => id.toString() === req.query.workspaceId);
+    if (!ok) return res.status(200).json({ success: true, data: [], meta: { total: 0 } });
   }
 
-  if (req.query.isClosed !== undefined)
-    query.isClosed = req.query.isClosed === 'true';
+  if (req.query.isClosed !== undefined) query.isClosed = req.query.isClosed === 'true';
 
   if (req.query.search?.trim()) {
     const kw = req.query.search.trim();
@@ -49,30 +47,51 @@ exports.getBoards = asyncHandler(async (req, res) => {
     ];
   }
 
-  const boards = await Board.find(query)
-    .populate('workspace',  'name visibility isActive owner members')
-    .populate('createdBy',  'name email avatar role')
-    .sort({ updatedAt: -1 });
+  // ── Pagination & Sort ──────────────────────────────────────────────
+  const page  = Math.max(parseInt(req.query.page  || '1',  10), 1);
+  const limit = Math.min(parseInt(req.query.limit || '50', 10), 100);
+  const skip  = (page - 1) * limit;
 
-  res.status(200).json({ success: true, data: boards });
+  const sortMap = {
+    name:    { name: 1 },
+    oldest:  { createdAt: 1 },
+    latest:  { updatedAt: -1 },
+  };
+  const sortBy = sortMap[req.query.sort] || { updatedAt: -1 };
+
+  const [boards, total] = await Promise.all([
+    Board.find(query)
+      .populate('workspace',  'name visibility isActive owner members')
+      .populate('createdBy',  'name email avatar role')
+      .sort(sortBy)
+      .skip(skip)
+      .limit(limit),
+    Board.countDocuments(query),
+  ]);
+
+  res.status(200).json({
+    success: true,
+    data: boards,
+    meta: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
+  });
 });
 
 // @desc  Create new board
 // @route POST /api/boards
 exports.createBoard = asyncHandler(async (req, res, next) => {
   const { name, description, workspaceId, background } = req.body;
-  if (!name || !workspaceId)
-    return next(new AppError('Board name and workspaceId are required', 400));
+  if (!name || !workspaceId) return next(new AppError('Board name and workspaceId are required', 400));
 
   const workspace = await Workspace.findById(workspaceId);
   if (!workspace) return next(new AppError('Workspace not found', 404));
 
   const board = await Board.create({
-    name: name.trim(),
-    description,
-    workspace: workspaceId,
-    background,
-    createdBy: req.user._id,
+    name: name.trim(), description, workspace: workspaceId, background, createdBy: req.user._id,
   });
 
   await Activity.log({
@@ -94,7 +113,7 @@ exports.getBoard = asyncHandler(async (req, res, next) => {
   res.status(200).json({ success: true, data: board });
 });
 
-// @desc  Update board details (name, description, background, isClosed)
+// @desc  Update board details
 // @route PUT /api/boards/:id
 exports.updateBoard = asyncHandler(async (req, res, next) => {
   const board = await Board.findById(req.params.id);
@@ -105,8 +124,7 @@ exports.updateBoard = asyncHandler(async (req, res, next) => {
   allowedFields.forEach((f) => {
     if (req.body[f] !== undefined)
       updates[f] = f === 'name' && typeof req.body[f] === 'string'
-        ? req.body[f].trim()
-        : req.body[f];
+        ? req.body[f].trim() : req.body[f];
   });
 
   if (updates.name === '') return next(new AppError('Board name cannot be empty', 400));
@@ -121,15 +139,9 @@ exports.updateBoard = asyncHandler(async (req, res, next) => {
     metadata: updates,
   });
 
-   const workspace = await Workspace.findById(board.workspace)
-    .populate('members.user', '_id');
-
+  const workspace = await Workspace.findById(board.workspace).populate('members.user', '_id');
   if (workspace) {
-    const allMemberIds = [
-      workspace.owner,
-      ...workspace.members.map((m) => m.user?._id || m.user),
-    ].filter(Boolean);
-
+    const allMemberIds = [workspace.owner, ...workspace.members.map((m) => m.user?._id || m.user)].filter(Boolean);
     const io = req.app?.get?.('io');
     await notify(io, {
       actor:      req.user._id,
@@ -173,11 +185,8 @@ exports.deleteBoard = asyncHandler(async (req, res, next) => {
   res.status(200).json({ success: true, message: 'Board deleted successfully', data: { id: board._id } });
 });
 
-// ─────────────────────────────────────────────────────────────
-// ✅ MỚI: Toggle star/unstar
 // @desc  Star or unstar a board for the current user
 // @route PATCH /api/boards/:id/star
-// ─────────────────────────────────────────────────────────────
 exports.toggleStar = asyncHandler(async (req, res, next) => {
   const board = await Board.findById(req.params.id);
   if (!board) return next(new AppError('Board not found', 404));
@@ -186,22 +195,14 @@ exports.toggleStar = asyncHandler(async (req, res, next) => {
   const idx      = board.starredBy.findIndex((id) => id.toString() === userId);
   const isStarred = idx > -1;
 
-  if (isStarred) {
-    // Unstar
-    board.starredBy.splice(idx, 1);
-  } else {
-    // Star
-    board.starredBy.push(req.user._id);
-  }
+  if (isStarred) board.starredBy.splice(idx, 1);
+  else           board.starredBy.push(req.user._id);
 
   await board.save();
 
   res.status(200).json({
     success:   true,
     isStarred: !isStarred,
-    data: {
-      _id:       board._id,
-      starredBy: board.starredBy,
-    },
+    data: { _id: board._id, starredBy: board.starredBy },
   });
 });

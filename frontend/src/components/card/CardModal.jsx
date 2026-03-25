@@ -1,7 +1,8 @@
 // frontend/src/components/card/CardModal.jsx
-// ✅ LabelManager ✅ DueDateBadge ✅ Archive ✅ Checklist progress
+// ✅ Thêm: upload attachment, xoá attachment
+// ✅ Đã có: LabelManager, DueDateBadge, Archive, Checklist progress, Assignees
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import cardService  from '@services/cardService';
 import boardService from '@services/boardService';
@@ -13,18 +14,22 @@ import LabelManager, { LabelChip } from '@components/board/LabelManager';
 import DueDateBadge from '@components/board/DueDateBadge';
 import apiClient from '@config/api';
 
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+
 export default function CardModal({ cardId, boardId, onClose }) {
   const queryClient = useQueryClient();
   const { t }  = useTranslation();
   const lang   = useUiStore(s => s.language) || 'vi';
 
-  const [isEditing, setIsEditing] = useState(false);
-  const [form, setForm] = useState({ title: '', description: '', dueDate: '' });
-  const [checklistText, setChecklistText] = useState('');
-  const [aiChecklist,   setAiChecklist]   = useState([]);
-  const [moveTargets,   setMoveTargets]   = useState({});
-  const [wsMembers,      setWsMembers]      = useState([]);  // members của workspace
-  const [loadingMembers, setLoadingMembers] = useState(false);
+  const [isEditing,       setIsEditing]       = useState(false);
+  const [form,            setForm]            = useState({ title: '', description: '', dueDate: '' });
+  const [checklistText,   setChecklistText]   = useState('');
+  const [aiChecklist,     setAiChecklist]     = useState([]);
+  const [moveTargets,     setMoveTargets]     = useState({});
+  const [wsMembers,       setWsMembers]       = useState([]);
+  const [loadingMembers,  setLoadingMembers]  = useState(false);
+  const [uploadingFile,   setUploadingFile]   = useState(false);
+  const fileInputRef = useRef(null);
 
   const { data: card, isLoading } = useQuery({
     queryKey: ['card', cardId],
@@ -48,87 +53,48 @@ export default function CardModal({ cardId, boardId, onClose }) {
   useEffect(() => {
     if (!card) return;
     setForm({
-      title: card.title || '',
+      title:       card.title || '',
       description: card.description || '',
-      dueDate: card.dueDate ? card.dueDate.slice(0, 10) : '',
+      dueDate:     card.dueDate ? card.dueDate.slice(0, 10) : '',
     });
   }, [card]);
 
+  // Load workspace members
   useEffect(() => {
     if (!boardId) return;
-
-    const loadBoardMembers = async () => {
-      setLoadingMembers(true);
-      try {
-        // ── Bước 1: Lấy thông tin board → tìm workspaceId ──────────────────
-        const boardRes  = await boardService.getBoardDetails(boardId);
-        const boardData = boardRes?.data ?? boardRes;
-        const workspaceId =
-          boardData?.workspace?._id || boardData?.workspace;
-
-        if (!workspaceId) {
-          setWsMembers([]);
-          return;
-        }
-
-        // ── Bước 2: Lấy workspace → lấy danh sách members ──────────────────
+    setLoadingMembers(true);
+    boardService.getBoardDetails(boardId)
+      .then(async (boardRes) => {
+        const bd = boardRes?.data ?? boardRes;
+        const workspaceId = bd?.workspace?._id || bd?.workspace;
+        if (!workspaceId) return setWsMembers([]);
         const wsRes = await apiClient.get(`/workspaces/${workspaceId}`);
         const ws    = wsRes?.data ?? wsRes;
-
-        // ── Bước 3: Gộp owner + members, LOẠI TRÙNG ────────────────────────
-        const ownerId   = (ws.owner?._id || ws.owner)?.toString();
-        const ownerUser = ws.owner;
-
-        // Lọc bỏ owner ra khỏi members[] để tránh hiện 2 lần
-        const otherMembers = (ws.members || [])
-          .filter(
-            (m) =>
-              (m.user?._id || m.user)?.toString() !== ownerId
-          )
-          .map((m) => m.user)
-          .filter(Boolean);
-
-        // Gộp: owner đứng đầu, sau đó là các member khác
-        const merged = [ownerUser, ...otherMembers].filter(Boolean);
-
-        // ── Bước 4: Deduplicate lần cuối theo _id (an toàn tuyệt đối) ───────
-        const seen      = new Set();
-        const memberList = merged.filter((u) => {
-          const id = (u?._id || u)?.toString();
-          if (!id || seen.has(id)) return false;
-          seen.add(id);
-          return true;
-        });
-
-        setWsMembers(memberList);
-      } catch (err) {
-        console.error('loadBoardMembers error:', err);
-        setWsMembers([]);
-      }
-      setLoadingMembers(false);
-    };
-
-    loadBoardMembers();
+        const ownerId = (ws.owner?._id || ws.owner)?.toString();
+        const others  = (ws.members || [])
+          .filter(m => (m.user?._id || m.user)?.toString() !== ownerId)
+          .map(m => m.user).filter(Boolean);
+        const merged = [ws.owner, ...others].filter(Boolean);
+        const seen   = new Set();
+        setWsMembers(merged.filter(u => { const id = (u?._id || u)?.toString(); if (!id || seen.has(id)) return false; seen.add(id); return true; }));
+      })
+      .catch(() => setWsMembers([]))
+      .finally(() => setLoadingMembers(false));
   }, [boardId]);
 
-  // ── Thêm hàm toggle assignee:
   const handleToggleAssignee = async (userId) => {
-    const currentAssignees = card?.assignees?.map((a) => a._id || a) || [];
-    const isAssigned = currentAssignees.some(
-      (id) => id?.toString() === userId?.toString()
-    );
-
+    const currentIds = card?.assignees?.map(a => a._id || a) || [];
+    const isAssigned = currentIds.some(id => id?.toString() === userId?.toString());
     const newAssignees = isAssigned
-      ? currentAssignees.filter((id) => id?.toString() !== userId?.toString())
-      : [...currentAssignees, userId];
-
+      ? currentIds.filter(id => id?.toString() !== userId?.toString())
+      : [...currentIds, userId];
     await cardService.update(cardId, { assignees: newAssignees });
     queryClient.invalidateQueries(['card', cardId]);
     queryClient.invalidateQueries(['board', boardId]);
   };
 
   const updateMutation = useMutation({
-    mutationFn: updates => cardService.update(cardId, updates),
+    mutationFn: (updates) => cardService.update(cardId, updates),
     onSuccess: () => {
       queryClient.invalidateQueries(['card', cardId]);
       queryClient.invalidateQueries(['board', boardId]);
@@ -137,17 +103,17 @@ export default function CardModal({ cardId, boardId, onClose }) {
   });
 
   const commentMutation = useMutation({
-    mutationFn: content => cardService.addComment(cardId, { content, boardId }),
+    mutationFn: (content) => cardService.addComment(cardId, { content, boardId }),
     onSuccess:  () => queryClient.invalidateQueries(['card', cardId]),
   });
 
   const checklistMutation = useMutation({
-    mutationFn: text => cardService.addChecklistItem(cardId, text),
+    mutationFn: (text) => cardService.addChecklistItem(cardId, text),
     onSuccess:  () => { queryClient.invalidateQueries(['card', cardId]); setChecklistText(''); },
   });
 
   const toggleChecklistMutation = useMutation({
-    mutationFn: itemId => cardService.toggleChecklistItem(cardId, itemId),
+    mutationFn: (itemId) => cardService.toggleChecklistItem(cardId, itemId),
     onSuccess:  () => queryClient.invalidateQueries(['card', cardId]),
   });
 
@@ -176,18 +142,51 @@ export default function CardModal({ cardId, boardId, onClose }) {
 
   const archiveMutation = useMutation({
     mutationFn: () => cardService.update(cardId, { isArchived: true }),
-    onSuccess:  () => {
-      queryClient.invalidateQueries(['board', boardId]);
-      toast.success(lang === 'vi' ? 'Đã lưu trữ card' : 'Card archived');
-      onClose();
-    },
+    onSuccess:  () => { queryClient.invalidateQueries(['board', boardId]); toast.success(lang === 'vi' ? 'Đã lưu trữ card' : 'Card archived'); onClose(); },
   });
 
-  /* ─── Update labels ─── */
   const handleLabelsUpdate = async (newLabels) => {
     await cardService.update(cardId, { labels: newLabels });
     queryClient.invalidateQueries(['card', cardId]);
     queryClient.invalidateQueries(['board', boardId]);
+  };
+
+  // ── File upload ──────────────────────────────────────────────────────
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { toast.error(lang === 'vi' ? 'File tối đa 5MB' : 'Max file size is 5MB'); return; }
+    setUploadingFile(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await apiClient.post(`/cards/${cardId}/attachments`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      queryClient.invalidateQueries(['card', cardId]);
+      toast.success(lang === 'vi' ? 'Đã đính kèm file!' : 'File attached!');
+    } catch (err) {
+      toast.error(err?.message || (lang === 'vi' ? 'Upload thất bại' : 'Upload failed'));
+    }
+    setUploadingFile(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleDeleteAttachment = async (attachmentId) => {
+    if (!window.confirm(lang === 'vi' ? 'Xoá file này?' : 'Delete this attachment?')) return;
+    try {
+      await apiClient.delete(`/cards/${cardId}/attachments/${attachmentId}`);
+      queryClient.invalidateQueries(['card', cardId]);
+      toast.success(lang === 'vi' ? 'Đã xoá file' : 'Attachment deleted');
+    } catch (err) {
+      toast.error(err?.message || (lang === 'vi' ? 'Xoá thất bại' : 'Delete failed'));
+    }
+  };
+
+  const getFileIcon = (type) => {
+    if (type?.startsWith('image/')) return '🖼';
+    if (type === 'application/pdf') return '📄';
+    return '📎';
   };
 
   if (isLoading) return <div className="modal-overlay"><div style={{ color: 'white' }}>{t('loadingCard')}</div></div>;
@@ -197,6 +196,7 @@ export default function CardModal({ cardId, boardId, onClose }) {
   const done      = checklist.filter(i => i.completed).length;
   const total     = checklist.length;
   const progress  = total > 0 ? Math.round((done / total) * 100) : 0;
+  const attachments = card?.attachments || [];
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -223,13 +223,7 @@ export default function CardModal({ cardId, boardId, onClose }) {
           {labels.map((raw, i) => <LabelChip key={i} raw={raw} />)}
           <LabelManager labels={labels} onUpdate={handleLabelsUpdate}
             trigger={
-              <span style={{
-                display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px',
-                borderRadius: 999, background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.12)',
-                color: 'rgba(255,255,255,.6)', fontSize: 12, cursor: 'pointer', transition: 'all .15s',
-              }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,.18)'; e.currentTarget.style.color = 'white'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,.1)'; e.currentTarget.style.color = 'rgba(255,255,255,.6)'; }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 999, background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.12)', color: 'rgba(255,255,255,.6)', fontSize: 12, cursor: 'pointer' }}>
                 🏷 {lang === 'vi' ? 'Nhãn' : 'Labels'}
               </span>
             } />
@@ -237,84 +231,33 @@ export default function CardModal({ cardId, boardId, onClose }) {
 
         {/* ─── Assignees ─── */}
         <div className="mb-5">
-          <h3 className="text-sm uppercase tracking-[0.24em] text-emerald-100/70 mb-3">
-            {lang === 'vi' ? 'Thành viên được giao' : 'Assignees'}
-          </h3>
-
+          <h3 className="text-sm uppercase tracking-[0.24em] text-emerald-100/70 mb-3">{lang === 'vi' ? 'Thành viên được giao' : 'Assignees'}</h3>
           {loadingMembers ? (
-            <p style={{ fontSize: 12, color: 'rgba(255,255,255,.4)' }}>
-              {lang === 'vi' ? 'Đang tải...' : 'Loading...'}
-            </p>
+            <p style={{ fontSize: 12, color: 'rgba(255,255,255,.4)' }}>{lang === 'vi' ? 'Đang tải...' : 'Loading...'}</p>
           ) : wsMembers.length === 0 ? (
-            <p style={{ fontSize: 12, color: 'rgba(255,255,255,.3)', fontStyle: 'italic' }}>
-              {lang === 'vi'
-                ? 'Workspace chưa có thành viên nào'
-                : 'No workspace members found'}
-            </p>
+            <p style={{ fontSize: 12, color: 'rgba(255,255,255,.3)', fontStyle: 'italic' }}>{lang === 'vi' ? 'Chưa có thành viên' : 'No members'}</p>
           ) : (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {wsMembers.map((member) => {
                 const memberId   = member?._id || member;
-                const memberName = member?.name  || String(memberId);
-                const isAssigned = (card?.assignees || []).some(
-                  (a) => (a?._id || a)?.toString() === memberId?.toString()
-                );
-
+                const memberName = member?.name || String(memberId);
+                const isAssigned = (card?.assignees || []).some(a => (a?._id || a)?.toString() === memberId?.toString());
                 return (
-                  <button
-                    key={String(memberId)}
-                    type="button"
-                    onClick={() => handleToggleAssignee(memberId)}
-                    title={isAssigned
-                      ? (lang === 'vi' ? 'Bỏ giao việc' : 'Unassign')
-                      : (lang === 'vi' ? 'Giao việc'    : 'Assign')}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 7,
-                      padding: '5px 10px', borderRadius: 999,
-                      border: '1px solid',
-                      borderColor: isAssigned
-                        ? 'rgba(52,211,153,.5)' : 'rgba(255,255,255,.12)',
-                      background: isAssigned
-                        ? 'rgba(52,211,153,.15)' : 'rgba(255,255,255,.06)',
-                      cursor: 'pointer', transition: 'all .15s',
-                    }}
-                  >
-                    {/* Avatar */}
+                  <button key={String(memberId)} type="button" onClick={() => handleToggleAssignee(memberId)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 10px', borderRadius: 999, border: '1px solid', borderColor: isAssigned ? 'rgba(52,211,153,.5)' : 'rgba(255,255,255,.12)', background: isAssigned ? 'rgba(52,211,153,.15)' : 'rgba(255,255,255,.06)', cursor: 'pointer' }}>
                     {member?.avatar ? (
-                      <img
-                        src={member.avatar}
-                        alt={memberName}
-                        style={{
-                          width: 22, height: 22, borderRadius: '50%', objectFit: 'cover',
-                        }}
-                      />
+                      <img src={member.avatar} alt={memberName} style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover' }} />
                     ) : (
-                      <div style={{
-                        width: 22, height: 22, borderRadius: '50%',
-                        background: `hsl(${memberName.charCodeAt(0) * 17 % 360},60%,42%)`,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 10, fontWeight: 700, color: 'white', flexShrink: 0,
-                      }}>
+                      <div style={{ width: 22, height: 22, borderRadius: '50%', background: `hsl(${memberName.charCodeAt(0)*17%360},60%,42%)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: 'white', flexShrink: 0 }}>
                         {memberName[0].toUpperCase()}
                       </div>
                     )}
-
-                    {/* Name */}
-                    <span style={{
-                      fontSize: 12, fontWeight: 500,
-                      color: isAssigned ? '#6ee7b7' : 'rgba(255,255,255,.75)',
-                      maxWidth: 120, overflow: 'hidden',
-                      textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>
+                    <span style={{ fontSize: 12, fontWeight: 500, color: isAssigned ? '#6ee7b7' : 'rgba(255,255,255,.75)', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {memberName}
                     </span>
-
-                    {/* Check icon nếu đã giao */}
                     {isAssigned && (
                       <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-                        <path d="M1.5 5.5L4 8L9.5 2.5"
-                          stroke="#34d399" strokeWidth="1.6" strokeLinecap="round"
-                          strokeLinejoin="round"/>
+                        <path d="M1.5 5.5L4 8L9.5 2.5" stroke="#34d399" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
                     )}
                   </button>
@@ -359,9 +302,7 @@ export default function CardModal({ cardId, boardId, onClose }) {
             <h3 className="text-sm uppercase tracking-[0.24em] text-emerald-100/70">{lang === 'vi' ? 'Thao tác' : 'Actions'}</h3>
             <div className="space-y-2">
               {!isEditing ? (
-                <button onClick={() => setIsEditing(true)} className="btn btn-secondary btn-sm w-full text-left">
-                  ✎ {t('editCard')}
-                </button>
+                <button onClick={() => setIsEditing(true)} className="btn btn-secondary btn-sm w-full text-left">✎ {t('editCard')}</button>
               ) : (
                 <>
                   <button onClick={() => updateMutation.mutate({ title: form.title, description: form.description, dueDate: form.dueDate || null })}
@@ -369,8 +310,7 @@ export default function CardModal({ cardId, boardId, onClose }) {
                   <button onClick={() => setIsEditing(false)} className="btn btn-secondary btn-sm w-full">{t('cancel')}</button>
                 </>
               )}
-              <button onClick={() => archiveMutation.mutate()} className="btn btn-secondary btn-sm w-full text-left"
-                style={{ color: '#fbbf24' }}>
+              <button onClick={() => archiveMutation.mutate()} className="btn btn-secondary btn-sm w-full text-left" style={{ color: '#fbbf24' }}>
                 📦 {lang === 'vi' ? 'Lưu trữ' : 'Archive'}
               </button>
               <button onClick={() => { if (window.confirm(lang === 'vi' ? 'Xoá card này?' : 'Delete this card?')) deleteMutation.mutate(); }}
@@ -380,6 +320,68 @@ export default function CardModal({ cardId, boardId, onClose }) {
             </div>
           </section>
         </div>
+
+        {/* ─── Attachments ─── */}
+        <section className="mt-6">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm uppercase tracking-[0.24em] text-emerald-100/70">
+              {lang === 'vi' ? 'Đính kèm' : 'Attachments'}
+              {attachments.length > 0 && (
+                <span style={{ marginLeft: 6, padding: '1px 7px', borderRadius: 999, background: 'rgba(255,255,255,.1)', fontSize: 10 }}>
+                  {attachments.length}
+                </span>
+              )}
+            </h3>
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,.pdf"
+                style={{ display: 'none' }}
+                onChange={handleFileUpload}
+              />
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingFile}
+                style={{ fontSize: 12 }}
+              >
+                {uploadingFile
+                  ? (lang === 'vi' ? 'Đang tải...' : 'Uploading...')
+                  : (lang === 'vi' ? '+ Đính kèm file' : '+ Attach file')
+                }
+              </button>
+            </div>
+          </div>
+
+          {attachments.length === 0 ? (
+            <p className="text-sm text-emerald-50/40 italic">
+              {lang === 'vi' ? 'Chưa có file đính kèm. Hỗ trợ ảnh & PDF, tối đa 5MB.' : 'No attachments yet. Images & PDFs supported, max 5MB.'}
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {attachments.map((att) => (
+                <div key={att._id}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 10, background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.08)' }}>
+                  <span style={{ fontSize: 18, flexShrink: 0 }}>{getFileIcon(att.type)}</span>
+                  <a href={att.url} target="_blank" rel="noreferrer"
+                    style={{ flex: 1, minWidth: 0, color: '#60a5fa', fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'none' }}>
+                    {att.name}
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteAttachment(att._id)}
+                    style={{ width: 24, height: 24, borderRadius: '50%', border: 'none', background: 'rgba(239,68,68,.2)', color: '#f87171', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, flexShrink: 0 }}
+                    title={lang === 'vi' ? 'Xoá' : 'Delete'}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
 
         {/* ─── Checklist ─── */}
         <section className="mt-6">
@@ -391,13 +393,11 @@ export default function CardModal({ cardId, boardId, onClose }) {
               </span>
             )}
           </div>
-
           {total > 0 && (
             <div style={{ height: 5, borderRadius: 99, background: 'rgba(255,255,255,.1)', marginBottom: 12, overflow: 'hidden' }}>
               <div style={{ height: '100%', width: `${progress}%`, borderRadius: 99, background: progress === 100 ? '#22c55e' : '#3b82f6', transition: 'width .3s' }} />
             </div>
           )}
-
           <div className="flex flex-wrap gap-2 mb-3">
             <button type="button" className="btn btn-secondary btn-sm"
               onClick={() => aiChecklistMutation.mutate()}
@@ -416,13 +416,11 @@ export default function CardModal({ cardId, boardId, onClose }) {
               </button>
             )}
           </div>
-
           {aiChecklist.length > 0 && (
             <div className="mb-4 rounded-xl border border-white/10 bg-white/5 p-3 space-y-1">
               {aiChecklist.map(item => <div key={item} className="text-sm text-emerald-50/80">• {item}</div>)}
             </div>
           )}
-
           <div className="space-y-2 mb-4">
             {checklist.map(item => {
               const isMoving = moveChecklistMutation.isPending && moveChecklistMutation.variables?.itemId === item._id;
@@ -455,7 +453,6 @@ export default function CardModal({ cardId, boardId, onClose }) {
             })}
             {!checklist.length && <p className="text-sm text-emerald-50/40">{t('noChecklistItemsYet')}</p>}
           </div>
-
           <div className="flex gap-2">
             <input className="input min-w-0 flex-1" placeholder={t('addChecklistItemPlaceholder')}
               value={checklistText} onChange={e => setChecklistText(e.target.value)}

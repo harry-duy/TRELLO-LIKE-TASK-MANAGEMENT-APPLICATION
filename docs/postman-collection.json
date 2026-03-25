@@ -1,0 +1,450 @@
+{
+  "info": {
+    "name": "Trello-like Task Management API",
+    "_postman_id": "trello-clone-api-v1",
+    "description": "API collection cho Trello-like Task Management Application. Base URL: {{baseUrl}}/api",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl",      "value": "http://localhost:5001", "type": "string" },
+    { "key": "accessToken",  "value": "",                      "type": "string" },
+    { "key": "workspaceId",  "value": "",                      "type": "string" },
+    { "key": "boardId",      "value": "",                      "type": "string" },
+    { "key": "listId",       "value": "",                      "type": "string" },
+    { "key": "cardId",       "value": "",                      "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Register",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 201', () => pm.response.to.have.status(201));", "const json = pm.response.json();", "pm.collectionVariables.set('accessToken', json.data.accessToken);", "pm.test('Has accessToken', () => pm.expect(json.data.accessToken).to.be.a('string'));"] } }],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/auth/register",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Test User\",\n  \"email\": \"test@example.com\",\n  \"password\": \"Password123\",\n  \"confirmPassword\": \"Password123\"\n}" }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));", "const json = pm.response.json();", "pm.collectionVariables.set('accessToken', json.data.accessToken);"] } }],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"Password123\"\n}" }
+          }
+        },
+        {
+          "name": "Get Me",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"] } }],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/auth/me",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/auth/refresh-token",
+            "header": []
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/auth/logout",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+          }
+        },
+        {
+          "name": "Forgot Password",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/auth/forgot-password",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"email\": \"test@example.com\" }" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Workspaces",
+      "item": [
+        {
+          "name": "Create Workspace",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 201', () => pm.response.to.have.status(201));", "const json = pm.response.json();", "pm.collectionVariables.set('workspaceId', json.data._id);"] } }],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/workspaces",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"My Workspace\",\n  \"description\": \"Team workspace\",\n  \"visibility\": \"private\"\n}" }
+          }
+        },
+        {
+          "name": "Get My Workspaces",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/workspaces",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+          }
+        },
+        {
+          "name": "Get Workspace Detail",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/workspaces/{{workspaceId}}",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+          }
+        },
+        {
+          "name": "Update Workspace",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/workspaces/{{workspaceId}}",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Updated Workspace\",\n  \"visibility\": \"public\"\n}" }
+          }
+        },
+        {
+          "name": "Delete Workspace",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/workspaces/{{workspaceId}}",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+          }
+        },
+        {
+          "name": "Add Member",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/workspaces/{{workspaceId}}/members",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"member@example.com\",\n  \"role\": \"member\"\n}" }
+          }
+        },
+        {
+          "name": "Remove Member",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/workspaces/{{workspaceId}}/members/:userId",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+          }
+        },
+        {
+          "name": "Update Member Role",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/api/workspaces/{{workspaceId}}/members/:userId/role",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"role\": \"admin\" }" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Boards",
+      "item": [
+        {
+          "name": "Get Boards",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/boards?workspaceId={{workspaceId}}&page=1&limit=20&sort=latest", "host": ["{{baseUrl}}"], "path": ["api", "boards"], "query": [{ "key": "workspaceId", "value": "{{workspaceId}}" }, { "key": "page", "value": "1" }, { "key": "limit", "value": "20" }, { "key": "sort", "value": "latest" }] },
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+          }
+        },
+        {
+          "name": "Create Board",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 201', () => pm.response.to.have.status(201));", "const json = pm.response.json();", "pm.collectionVariables.set('boardId', json.data._id);"] } }],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/boards",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Sprint Board\",\n  \"workspaceId\": \"{{workspaceId}}\",\n  \"background\": \"#0079bf\"\n}" }
+          }
+        },
+        {
+          "name": "Get Board Detail",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/boards/{{boardId}}",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+          }
+        },
+        {
+          "name": "Update Board",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/boards/{{boardId}}",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Updated Board\",\n  \"background\": \"#7c3aed\"\n}" }
+          }
+        },
+        {
+          "name": "Delete Board",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/boards/{{boardId}}",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+          }
+        },
+        {
+          "name": "Toggle Star",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/api/boards/{{boardId}}/star",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Lists",
+      "item": [
+        {
+          "name": "Create List",
+          "event": [{ "listen": "test", "script": { "exec": ["const json = pm.response.json();", "pm.collectionVariables.set('listId', json.data._id);"] } }],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/lists",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"To Do\",\n  \"boardId\": \"{{boardId}}\"\n}" }
+          }
+        },
+        {
+          "name": "Get Board Lists",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/lists/board/{{boardId}}",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+          }
+        },
+        {
+          "name": "Update List",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/lists/{{listId}}",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"name\": \"In Progress\" }" }
+          }
+        },
+        {
+          "name": "Delete List",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/lists/{{listId}}",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cards",
+      "item": [
+        {
+          "name": "Create Card",
+          "event": [{ "listen": "test", "script": { "exec": ["const json = pm.response.json();", "pm.collectionVariables.set('cardId', json.data._id);"] } }],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/cards",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Implement login API\",\n  \"listId\": \"{{listId}}\",\n  \"boardId\": \"{{boardId}}\"\n}" }
+          }
+        },
+        {
+          "name": "Get Card Detail",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/cards/{{cardId}}",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+          }
+        },
+        {
+          "name": "Update Card",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/cards/{{cardId}}",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Updated title\",\n  \"description\": \"Add description here\",\n  \"dueDate\": \"2025-12-31T00:00:00.000Z\",\n  \"labels\": [\"backend\", \"urgent\"]\n}" }
+          }
+        },
+        {
+          "name": "Move Card",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/cards/{{cardId}}/move",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"listId\": \"<target-list-id>\",\n  \"position\": 0,\n  \"boardId\": \"{{boardId}}\"\n}" }
+          }
+        },
+        {
+          "name": "Search Cards",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/cards/search?boardId={{boardId}}&keyword=login&page=1&limit=10", "host": ["{{baseUrl}}"], "path": ["api","cards","search"], "query": [{ "key": "boardId", "value": "{{boardId}}" }, { "key": "keyword", "value": "login" }, { "key": "page", "value": "1" }, { "key": "limit", "value": "10" }] },
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+          }
+        },
+        {
+          "name": "Add Comment",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/cards/{{cardId}}/comments",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"content\": \"This is a comment\",\n  \"boardId\": \"{{boardId}}\"\n}" }
+          }
+        },
+        {
+          "name": "Add Checklist Item",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/cards/{{cardId}}/checklist",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"text\": \"Write unit tests\" }" }
+          }
+        },
+        {
+          "name": "Upload Attachment",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/cards/{{cardId}}/attachments",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "body": { "mode": "formdata", "formdata": [{ "key": "file", "type": "file", "src": "" }] }
+          }
+        },
+        {
+          "name": "Delete Attachment",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/cards/{{cardId}}/attachments/:attachmentId",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+          }
+        },
+        {
+          "name": "Delete Card",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/cards/{{cardId}}",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Activities",
+      "item": [
+        {
+          "name": "Get Board Activities",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/activities/board/{{boardId}}?page=1&limit=20", "host": ["{{baseUrl}}"], "path": ["api","activities","board","{{boardId}}"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "20" }] },
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+          }
+        },
+        {
+          "name": "Get Workspace Activities",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/activities/workspace/{{workspaceId}}?page=1&limit=20", "host": ["{{baseUrl}}"], "path": ["api","activities","workspace","{{workspaceId}}"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "20" }] },
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+          }
+        },
+        {
+          "name": "Get Workspace Analytics",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/activities/analytics/{{workspaceId}}?days=7", "host": ["{{baseUrl}}"], "path": ["api","activities","analytics","{{workspaceId}}"], "query": [{ "key": "days", "value": "7" }] },
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        {
+          "name": "Get Notifications",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/notifications?page=1&limit=20", "host": ["{{baseUrl}}"], "path": ["api","notifications"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "20" }] },
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+          }
+        },
+        {
+          "name": "Get Unread Count",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/notifications/unread-count",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+          }
+        },
+        {
+          "name": "Mark All As Read",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/api/notifications/read-all",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+          }
+        },
+        {
+          "name": "Clear All Notifications",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/notifications",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "System Overview",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/admin/analytics/overview",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+          }
+        },
+        {
+          "name": "System Trends",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/admin/analytics/trends?days=7", "host": ["{{baseUrl}}"], "path": ["api","admin","analytics","trends"], "query": [{ "key": "days", "value": "7" }] },
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+          }
+        },
+        {
+          "name": "Get All Users",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/users?page=1&limit=20&role=user", "host": ["{{baseUrl}}"], "path": ["api","users"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "20" }, { "key": "role", "value": "user" }] },
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+          }
+        },
+        {
+          "name": "Get All Workspaces (Admin)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/admin/workspaces?search=&visibility=&page=1&limit=20", "host": ["{{baseUrl}}"], "path": ["api","admin","workspaces"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "20" }] },
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+          }
+        },
+        {
+          "name": "Get System Logs",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/admin/logs?file=combined.log&lines=100", "host": ["{{baseUrl}}"], "path": ["api","admin","logs"], "query": [{ "key": "file", "value": "combined.log" }, { "key": "lines", "value": "100" }] },
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+          }
+        }
+      ]
+    }
+  ]
+}
