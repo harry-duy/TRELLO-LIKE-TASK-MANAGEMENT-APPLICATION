@@ -9,6 +9,7 @@ import {
   DndContext, rectIntersection, PointerSensor,
   useSensor, useSensors, DragOverlay, useDroppable,
 } from '@dnd-kit/core';
+import { SortableContext, arrayMove, horizontalListSortingStrategy } from '@dnd-kit/sortable';
 import { useUiStore }    from '@store/uiStore';
 import { useAuthStore }  from '@store/authStore';
 import boardService      from '@services/boardService';
@@ -52,6 +53,7 @@ const L = {
     deleteCardError: 'Không thể xoá card',
     moveCardError:   'Không thể di chuyển card',
     createListError: 'Không thể tạo danh sách',
+    reorderListError:'Không thể đổi vị trí danh sách',
     archiveOk:       'Đã lưu trữ card',
     archiveFail:     'Không thể lưu trữ',
     filterActive:    n => `Lọc (${n})`,
@@ -82,6 +84,7 @@ const L = {
     deleteCardError: 'Could not delete card',
     moveCardError:   'Could not move card',
     createListError: 'Could not create list',
+    reorderListError:'Could not reorder list',
     archiveOk:       'Card archived',
     archiveFail:     'Could not archive',
     filterActive:    n => `Filter (${n})`,
@@ -99,6 +102,7 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
 
   const [selectedCardId, setSelectedCardId] = useState(null);
   const [activeCard,     setActiveCard]     = useState(null);
+  const [activeList,     setActiveList]     = useState(null);
   const [isAddingList,   setIsAddingList]   = useState(false);
   const [listName,       setListName]       = useState('');
   const [aiSearchQuery,  setAiSearchQuery]  = useState('');
@@ -112,6 +116,7 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
   const archive = useDroppable({ id: 'archive' });
   const trashRef   = useRef(null);
   const archiveRef = useRef(null);
+  const columnsRef = useRef(null);
   const [trashHover,   setTrashHover]   = useState(false);
   const [archiveHover, setArchiveHover] = useState(false);
   const lastOverId  = useRef(null);
@@ -162,9 +167,24 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
   };
 
   const handleDragStart = ({ active }) => {
-    if (active?.data?.current?.type !== 'card') { setActiveCard(null); return; }
-    const card = board?.lists?.flatMap(l => l.cards || []).find(c => c._id === active.id);
-    setActiveCard(card || null);
+    const dragType = active?.data?.current?.type;
+
+    if (dragType === 'card') {
+      const card = board?.lists?.flatMap(l => l.cards || []).find(c => c._id === active.id);
+      setActiveCard(card || null);
+      setActiveList(null);
+      return;
+    }
+
+    if (dragType === 'list') {
+      const list = board?.lists?.find(li => li._id === active.id);
+      setActiveList(list || null);
+      setActiveCard(null);
+      return;
+    }
+
+    setActiveCard(null);
+    setActiveList(null);
   };
 
   const handleDragMove = (e) => {
@@ -175,10 +195,51 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
   };
 
   const handleDragEnd = async ({ active, over }) => {
+    if (active?.data?.current?.type === 'list') {
+      setActiveCard(null);
+      setActiveList(null);
+      setTrashHover(false);
+      setArchiveHover(false);
+      lastOverId.current = null;
+      overZoneRef.current = null;
+
+      if (!over || active.id === over.id || !board?.lists?.length) return;
+
+      const oldIndex = board.lists.findIndex(li => li._id === active.id);
+      const newIndex = board.lists.findIndex(li => li._id === over.id);
+      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
+
+      const reorderedLists = arrayMove(board.lists, oldIndex, newIndex).map((list, index) => ({
+        ...list,
+        position: index,
+      }));
+
+      queryClient.setQueryData(['board', boardId], (prev) => {
+        if (!prev) return prev;
+        const currentBoard = prev.lists ? prev : prev.data;
+        if (!currentBoard) return prev;
+        const nextBoard = { ...currentBoard, lists: reorderedLists };
+        return prev.lists ? nextBoard : { ...prev, data: nextBoard };
+      });
+
+      try {
+        await Promise.all(
+          reorderedLists.map((list, index) =>
+            listService.updateList(list._id, { position: index })
+          )
+        );
+        queryClient.invalidateQueries(['board', boardId]);
+      } catch {
+        toast.error(l.reorderListError);
+        queryClient.invalidateQueries(['board', boardId]);
+      }
+      return;
+    }
+
     const cardId = active.id;
     const zone   = overZoneRef.current || (over?.id === 'trash' ? 'trash' : over?.id === 'archive' ? 'archive' : null);
     const overId = zone || over?.id || lastOverId.current || null;
-    setActiveCard(null); lastOverId.current = null; overZoneRef.current = null;
+    setActiveCard(null); setActiveList(null); lastOverId.current = null; overZoneRef.current = null;
     setTrashHover(false); setArchiveHover(false);
     if (!overId) return;
 
@@ -242,10 +303,19 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
   const filteredLists  = applyFilters(board?.lists || [], filter);
   const activeFilters  = countActiveFilters(filter);
   const workspaceId    = board?.workspace?._id || board?.workspace;
+  const columnWidth =
+    filteredLists.length <= 3 ? 320 :
+    filteredLists.length === 4 ? 300 :
+    filteredLists.length === 5 ? 280 :
+    272;
 
   /* ─── Board background color/image ─── */
   const boardBg = board?.background || '#1158cb';
   const isHexColor = /^#[0-9a-fA-F]+$/.test(boardBg);
+
+  useEffect(() => {
+    columnsRef.current?.scrollTo({ left: 0, behavior: 'auto' });
+  }, [boardId]);
 
   if (isLoading) return (
     <div style={{
@@ -267,28 +337,38 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
-      borderRadius: '8px',
-      overflow: 'hidden',
-      background: isHexColor ? boardBg : '#1558CB',
+      borderRadius: '20px',
+      overflow: 'visible',
+      background: isHexColor
+        ? `linear-gradient(180deg, ${boardBg}, rgba(6, 30, 53, 0.96))`
+        : boardBg,
     }}>
 
       {/* ─── Board Header ─── */}
       {showHeader && (
         <div className="board-header">
           {/* Board name + star */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
-            <h1 className="board-title">{board?.name}</h1>
-            <StarButton
-              board={board}
-              size="sm"
-              labelStar={l.star}
-              labelUnstar={l.unstar}
-              onToggle={() => queryClient.invalidateQueries(['board', boardId])}
-            />
+          <div className="board-header-main">
+            <span className="board-header-accent" style={{ background: boardBg }} />
+            <div className="board-header-copy">
+              {board?.workspace?.name ? (
+                <div className="board-header-kicker">{board.workspace.name}</div>
+              ) : null}
+              <div className="board-header-title-row">
+                <h1 className="board-title">{board?.name}</h1>
+                <StarButton
+                  board={board}
+                  size="sm"
+                  labelStar={l.star}
+                  labelUnstar={l.unstar}
+                  onToggle={() => queryClient.invalidateQueries(['board', boardId])}
+                />
+              </div>
+            </div>
           </div>
 
           {/* Header actions */}
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div className="board-header-actions">
             {/* AI Search toggle */}
             <button
               className="board-button"
@@ -353,14 +433,10 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
 
       {/* ─── AI Search Panel ─── */}
       {showAiSearch && (
-        <div style={{
-          padding: '8px 16px',
-          background: 'rgba(0,0,0,.16)',
-          borderBottom: '1px solid rgba(255,255,255,.1)',
-        }}>
-          <div style={{ display: 'flex', gap: 8, maxWidth: 600 }}>
+        <div className="board-search-panel">
+          <div className="board-search-toolbar">
             <input
-              className="input"
+              className="input board-search-input"
               placeholder={l.aiSearchPh}
               value={aiSearchQuery}
               onChange={e => setAiSearchQuery(e.target.value)}
@@ -368,15 +444,9 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
                 if (e.key === 'Enter' && aiSearchQuery.trim())
                   aiSearchMutation.mutate({ boardId, query: aiSearchQuery.trim() });
               }}
-              style={{
-                background: 'rgba(255,255,255,.14)',
-                borderColor: 'rgba(255,255,255,.16)',
-                color: 'white',
-                flex: 1,
-              }}
             />
             <button
-              className="btn btn-primary"
+              className="btn btn-primary btn-sm"
               onClick={() => aiSearchQuery.trim() && aiSearchMutation.mutate({ boardId, query: aiSearchQuery.trim() })}
               disabled={aiSearchMutation.isPending}
               style={{ flexShrink: 0 }}
@@ -387,47 +457,21 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
               <button
                 type="button"
                 onClick={() => setAiSearchResult(null)}
-                style={{
-                  padding: '0 10px',
-                  background: 'rgba(255,255,255,.14)',
-                  border: 'none',
-                  borderRadius: 4,
-                  color: 'white',
-                  cursor: 'pointer',
-                  fontSize: 16,
-                }}
+                className="board-inline-close"
               >
-                ✕
+                x
               </button>
             )}
           </div>
 
           {!!aiSearchResult?.cards?.length && (
-            <div style={{
-              marginTop: 8,
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: 6,
-              maxHeight: 120,
-              overflowY: 'auto',
-            }}>
+            <div className="board-search-results">
               {aiSearchResult.cards.map(card => (
                 <button
                   key={card._id}
                   type="button"
                   onClick={() => setSelectedCardId(card._id)}
-                  style={{
-                    background: 'rgba(255,255,255,.14)',
-                    border: '1px solid rgba(255,255,255,.16)',
-                    borderRadius: 4,
-                    padding: '4px 10px',
-                    color: 'white',
-                    fontSize: 12,
-                    cursor: 'pointer',
-                    transition: 'background 120ms',
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.22)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,.14)'}
+                  className="board-search-chip"
                 >
                   {card.title}
                   {card.list?.name && (
@@ -456,6 +500,7 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
       >
         {/* Columns scroll area */}
         <div
+          ref={columnsRef}
           className="custom-scrollbar"
           style={{
             flex: 1,
@@ -467,21 +512,27 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
             alignItems: 'flex-start',
           }}
         >
-          {filteredLists.map(list => (
-            <ListColumn
-              key={list._id}
-              list={list}
-              onCardClick={id => setSelectedCardId(id)}
-              onCardAdded={() => queryClient.invalidateQueries(['board', boardId])}
-              onListUpdated={() => queryClient.invalidateQueries(['board', boardId])}
-            />
-          ))}
+          <SortableContext
+            items={filteredLists.map(list => list._id)}
+            strategy={horizontalListSortingStrategy}
+          >
+            {filteredLists.map(list => (
+              <ListColumn
+                key={list._id}
+                list={list}
+                columnWidth={columnWidth}
+                onCardClick={id => setSelectedCardId(id)}
+                onCardAdded={() => queryClient.invalidateQueries(['board', boardId])}
+                onListUpdated={() => queryClient.invalidateQueries(['board', boardId])}
+              />
+            ))}
+          </SortableContext>
 
           {/* Add List */}
           <div style={{ flexShrink: 0 }}>
             {isAddingList ? (
               <div style={{
-                width: 272,
+                width: columnWidth,
                 background: 'rgba(22,33,57,.95)',
                 borderRadius: 12,
                 padding: 10,
@@ -504,16 +555,9 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
                   <button
                     type="button"
                     onClick={() => { setIsAddingList(false); setListName(''); }}
-                    style={{
-                      width: 28, height: 28,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      border: 'none', borderRadius: 4,
-                      background: 'transparent',
-                      color: 'rgba(255,255,255,.6)',
-                      cursor: 'pointer', fontSize: 16,
-                    }}
+                    className="board-inline-close"
                   >
-                    ✕
+                    x
                   </button>
                 </div>
               </div>
@@ -532,15 +576,15 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
         </div>
 
         {/* ─── Drop zones ─── */}
-        <div style={{ padding: '8px 16px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <div style={{ padding: '8px 16px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <div
             ref={node => { trash.setNodeRef(node); trashRef.current = node; }}
             style={{
               border: '2px dashed',
               borderColor: (trash.isOver || trashHover) ? 'var(--color-danger)' : 'rgba(255,255,255,.2)',
-              background: (trash.isOver || trashHover) ? 'rgba(248,113,104,.12)' : 'rgba(0,0,0,.12)',
-              borderRadius: 8,
-              padding: '8px 14px',
+              background: (trash.isOver || trashHover) ? 'rgba(248,113,104,.14)' : 'rgba(6,20,35,.22)',
+              borderRadius: 16,
+              padding: '12px 16px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -562,9 +606,9 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
             style={{
               border: '2px dashed',
               borderColor: (archive.isOver || archiveHover) ? 'var(--color-warning)' : 'rgba(255,255,255,.2)',
-              background: (archive.isOver || archiveHover) ? 'rgba(245,166,35,.12)' : 'rgba(0,0,0,.12)',
-              borderRadius: 8,
-              padding: '8px 14px',
+              background: (archive.isOver || archiveHover) ? 'rgba(245,166,35,.14)' : 'rgba(6,20,35,.22)',
+              borderRadius: 16,
+              padding: '12px 16px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -601,6 +645,34 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
               border: '1px solid rgba(87,157,255,.3)',
             }}>
               {activeCard.title}
+            </div>
+          ) : activeList ? (
+            <div
+              className="list-column"
+              style={{
+                width: columnWidth,
+                minWidth: columnWidth,
+                opacity: 0.92,
+                transform: 'rotate(2deg)',
+                boxShadow: '0 26px 46px rgba(0,0,0,.28)',
+              }}
+            >
+              <div className="list-column-header">
+                <div className="min-w-0 flex flex-1 items-center gap-2.5">
+                  <span
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 999,
+                      background: 'linear-gradient(135deg, rgba(125,211,252,.95), rgba(45,212,191,.85))',
+                      boxShadow: '0 0 0 4px rgba(125,211,252,.08)',
+                      flexShrink: 0,
+                    }}
+                  />
+                  <h3 className="list-column-title">{activeList.name}</h3>
+                </div>
+                <span className="list-column-count">{activeList.cards?.length || 0}</span>
+              </div>
             </div>
           ) : null}
         </DragOverlay>

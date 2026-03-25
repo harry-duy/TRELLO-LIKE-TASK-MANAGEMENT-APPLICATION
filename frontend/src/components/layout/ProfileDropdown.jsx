@@ -1,5 +1,5 @@
 // frontend/src/components/layout/ProfileDropdown.jsx
-// ✅ Avatar thật ngoài navbar  ✅ i18n  ✅ Thông báo thật  ✅ Lưu DB
+// ✅ Đã bỏ mục Thông báo (chuyển ra NotificationBell ngoài navbar)
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -8,11 +8,12 @@ import { useUiStore } from '@store/uiStore';
 import authService from '@services/authService';
 import apiClient from '@config/api';
 import toast from 'react-hot-toast';
+import workspaceService from '@services/workspaceService';
 
 /* ─────────────── i18n ─────────────── */
 const T = {
   vi: {
-    profile:'Hồ sơ cá nhân', settings:'Cài đặt tài khoản', notifications:'Thông báo', logout:'Đăng xuất',
+    profile:'Hồ sơ cá nhân', settings:'Cài đặt tài khoản', logout:'Đăng xuất',
     profileTitle:'Hồ sơ cá nhân', fullName:'Họ và tên', emailLabel:'Email', emailHint:'Không thể thay đổi',
     avatarLabel:'URL ảnh đại diện (tùy chọn)', avatarPh:'https://example.com/avatar.jpg', namePh:'Nguyễn Văn A',
     saveBtn:'Lưu thay đổi', saving:'Đang lưu...', saved:'Đã lưu!',
@@ -26,18 +27,9 @@ const T = {
     str:['Quá yếu','Yếu','Trung bình','Mạnh','Rất mạnh'],
     errCurPw:'Nhập mật khẩu hiện tại', errMinLen:'Tối thiểu 8 ký tự', errConfirm:'Mật khẩu không khớp',
     pwOk:'Đổi mật khẩu thành công!', pwFail:'Đổi mật khẩu thất bại',
-    notifTitle:'Thông báo', tabAll:'Tất cả', tabUnread:'Chưa đọc',
-    markAllRead:'Đọc tất cả', noNotif:'Không có thông báo', loadingNotif:'Đang tải...',
-    markRead:'Đánh dấu đã đọc', notifCount:n=>`${n} thông báo`,
-    card_created:'đã tạo card', card_updated:'đã cập nhật card', card_deleted:'đã xoá card',
-    card_moved:'đã di chuyển card', card_completed:'đã hoàn thành card',
-    comment_added:'đã bình luận trong', member_assigned:'đã gán bạn vào',
-    board_created:'đã tạo board', board_updated:'đã cập nhật board',
-    workspace_member_added:'đã thêm bạn vào workspace', due_date_changed:'đã đổi hạn chót',
-    unknown_action:'đã thực hiện thao tác',
   },
   en: {
-    profile:'My Profile', settings:'Account Settings', notifications:'Notifications', logout:'Sign out',
+    profile:'My Profile', settings:'Account Settings', logout:'Sign out',
     profileTitle:'My Profile', fullName:'Full name', emailLabel:'Email', emailHint:'Cannot be changed',
     avatarLabel:'Avatar URL (optional)', avatarPh:'https://example.com/avatar.jpg', namePh:'John Doe',
     saveBtn:'Save changes', saving:'Saving...', saved:'Saved!',
@@ -51,15 +43,6 @@ const T = {
     str:['Too weak','Weak','Fair','Strong','Very strong'],
     errCurPw:'Enter current password', errMinLen:'At least 8 characters', errConfirm:'Passwords do not match',
     pwOk:'Password changed!', pwFail:'Failed to change password',
-    notifTitle:'Notifications', tabAll:'All', tabUnread:'Unread',
-    markAllRead:'Mark all read', noNotif:'No notifications', loadingNotif:'Loading...',
-    markRead:'Mark as read', notifCount:n=>`${n} notification${n!==1?'s':''}`,
-    card_created:'created card', card_updated:'updated card', card_deleted:'deleted card',
-    card_moved:'moved card', card_completed:'completed card',
-    comment_added:'commented on', member_assigned:'assigned you to',
-    board_created:'created board', board_updated:'updated board',
-    workspace_member_added:'added you to workspace', due_date_changed:'changed due date',
-    unknown_action:'performed action',
   },
 };
 
@@ -79,9 +62,7 @@ function useEsc(cb) {
   }, [cb]);
 }
 
-/* ─────────────────────────────────────────────
-   ✅ UserAvatar: hiện ảnh thật nếu có, fallback initials
-───────────────────────────────────────────── */
+/* ─────────────── UserAvatar ─────────────── */
 function UserAvatar({ name, email, avatarUrl, size = 40, className = '' }) {
   const [imgError, setImgError] = useState(false);
   const initials = (name || email || '?').trim().split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
@@ -164,7 +145,7 @@ function Modal({ title, onClose, children, maxW = 'max-w-md' }) {
   );
 }
 
-/* ═══════════════ MODAL 1: Hồ sơ ═══════════════ */
+/* ═══════════════ MODAL: Hồ sơ ═══════════════ */
 function ProfileModal({ t, onClose }) {
   const { user } = useAuthStore();
   const [name,   setName]   = useState(user?.name   || '');
@@ -178,7 +159,6 @@ function ProfileModal({ t, onClose }) {
     try {
       const raw   = await authService.updateProfile({ name: name.trim(), avatar: avatar.trim() || undefined });
       const fresh = raw?.data?.data || raw?.data || raw;
-      // ✅ Sync store ngay lập tức – avatar mới sẽ hiện ở navbar
       useAuthStore.setState(s => ({ ...s, user: { ...s.user, ...fresh } }));
       setDone(true);
       toast.success(t.saveOk);
@@ -187,14 +167,13 @@ function ProfileModal({ t, onClose }) {
     finally { setLoading(false); }
   };
 
-  // Preview avatar khi user đang gõ URL
   const previewUrl = avatar.trim() || user?.avatar || '';
 
   return (
     <Modal title={t.profileTitle} onClose={onClose}>
       <div style={{ padding:'1.5rem', display:'flex', flexDirection:'column', gap:'1.25rem' }}>
 
-        {/* Avatar preview lớn */}
+        {/* Avatar preview */}
         <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:10 }}>
           <UserAvatar name={name || user?.name} email={user?.email} avatarUrl={previewUrl} size={80} />
           <div style={{ textAlign:'center' }}>
@@ -208,13 +187,11 @@ function ProfileModal({ t, onClose }) {
 
         <hr style={{ border:'none', borderTop:'1px solid rgba(255,255,255,.07)' }} />
 
-        {/* Họ tên */}
         <div>
           <label className="pfd-lbl">{t.fullName}</label>
           <input className="pfd-inp" value={name} onChange={e => setName(e.target.value)} placeholder={t.namePh} />
         </div>
 
-        {/* Email (readonly) */}
         <div>
           <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
             <span className="pfd-lbl" style={{ marginBottom:0 }}>{t.emailLabel}</span>
@@ -223,14 +200,11 @@ function ProfileModal({ t, onClose }) {
           <input className="pfd-inp" value={user?.email || ''} disabled style={{ opacity:.5, cursor:'not-allowed' }} />
         </div>
 
-        {/* Avatar URL */}
         <div>
           <label className="pfd-lbl">{t.avatarLabel}</label>
           <input className="pfd-inp" value={avatar} onChange={e => setAvatar(e.target.value)} placeholder={t.avatarPh} />
           {previewUrl && (
-            <p style={{ fontSize:10, color:'rgba(167,243,208,.5)', marginTop:4 }}>
-              ↑ Preview đang hiển thị phía trên
-            </p>
+            <p style={{ fontSize:10, color:'rgba(167,243,208,.5)', marginTop:4 }}>↑ Preview đang hiển thị phía trên</p>
           )}
         </div>
 
@@ -242,13 +216,12 @@ function ProfileModal({ t, onClose }) {
             { label:t.joinDate,           val:user?.createdAt?new Date(user.createdAt).toLocaleDateString():'—', color:'white' },
           ].map(c => (
             <div key={c.label} style={{ background:'rgba(255,255,255,.05)', border:'1px solid rgba(255,255,255,.07)', borderRadius:12, padding:'10px 8px', textAlign:'center' }}>
-              <p style={{ fontSize:9, textTransform:'uppercase', letterSpacing:'.06em', color:'rgba(255,255,255,.35)', marginBottom:4, margin:0 }}>{c.label}</p>
+              <p style={{ fontSize:9, textTransform:'uppercase', letterSpacing:'.06em', color:'rgba(255,255,255,.35)', margin:0 }}>{c.label}</p>
               <p style={{ fontSize:11, fontWeight:600, color:c.color, margin:0, marginTop:4 }}>{c.val}</p>
             </div>
           ))}
         </div>
 
-        {/* Save */}
         <button type="button" disabled={loading} onClick={save}
           style={{ width:'100%', padding:12, borderRadius:12, border:'none', cursor:loading?'not-allowed':'pointer', background:done?'linear-gradient(135deg,#059669,#047857)':'linear-gradient(135deg,#10b981,#059669)', color:'white', fontWeight:600, fontSize:14, display:'flex', alignItems:'center', justifyContent:'center', gap:8, opacity:loading?.7:1, transition:'background .3s' }}>
           {loading ? <><Spin/>{t.saving}</>
@@ -260,22 +233,22 @@ function ProfileModal({ t, onClose }) {
   );
 }
 
-/* ═══════════════ MODAL 2: Settings ═══════════════ */
+/* ═══════════════ MODAL: Settings ═══════════════ */
 function SettingsModal({ t, onClose }) {
-  const [f, setF]   = useState({ cur:'', next:'', confirm:'' });
+  const [f, setF]       = useState({ cur:'', next:'', confirm:'' });
   const [show, setShow] = useState({ cur:false, next:false, confirm:false });
   const [loading, setLoading] = useState(false);
-  const [str, setStr] = useState(0);
+  const [str, setStr]   = useState(0);
   const colors = ['#ef4444','#f97316','#eab308','#22c55e','#10b981'];
-  const calc = pw => { let s=0; if(pw.length>=8)s++; if(/[A-Z]/.test(pw))s++; if(/[0-9]/.test(pw))s++; if(/[^A-Za-z0-9]/.test(pw))s++; return s; };
+  const calc   = pw => { let s=0; if(pw.length>=8)s++; if(/[A-Z]/.test(pw))s++; if(/[0-9]/.test(pw))s++; if(/[^A-Za-z0-9]/.test(pw))s++; return s; };
   const Eye = ({ v }) => v
     ? <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M1 7.5S3.5 2.5 7.5 2.5 14 7.5 14 7.5 11.5 12.5 7.5 12.5 1 7.5 1 7.5z" stroke="currentColor" strokeWidth="1.2"/><circle cx="7.5" cy="7.5" r="1.8" stroke="currentColor" strokeWidth="1.2"/><path d="M2 2L13 13" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
     : <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M1 7.5S3.5 2.5 7.5 2.5 14 7.5 14 7.5 11.5 12.5 7.5 12.5 1 7.5 1 7.5z" stroke="currentColor" strokeWidth="1.2"/><circle cx="7.5" cy="7.5" r="1.8" stroke="currentColor" strokeWidth="1.2"/></svg>;
 
   const save = async () => {
-    if (!f.cur)             { toast.error(t.errCurPw);   return; }
-    if (f.next.length < 8)  { toast.error(t.errMinLen);   return; }
-    if (f.next !== f.confirm){ toast.error(t.errConfirm);  return; }
+    if (!f.cur)              { toast.error(t.errCurPw);  return; }
+    if (f.next.length < 8)   { toast.error(t.errMinLen); return; }
+    if (f.next !== f.confirm) { toast.error(t.errConfirm); return; }
     setLoading(true);
     try {
       await authService.changePassword({ currentPassword:f.cur, newPassword:f.next });
@@ -297,6 +270,7 @@ function SettingsModal({ t, onClose }) {
             <p style={{ color:'rgba(255,255,255,.45)', fontSize:11, margin:0 }}>{t.changePwDesc}</p>
           </div>
         </div>
+
         {[{key:'cur',label:t.curPw,ph:'••••••••'},{key:'next',label:t.newPw,ph:t.changePwDesc},{key:'confirm',label:t.confirmPw,ph:'••••••••'}].map(({key,label,ph}) => (
           <div key={key}>
             <label className="pfd-lbl">{label}</label>
@@ -321,6 +295,7 @@ function SettingsModal({ t, onClose }) {
             )}
           </div>
         ))}
+
         <button type="button" disabled={loading} onClick={save}
           style={{ width:'100%', padding:12, borderRadius:12, border:'none', cursor:loading?'not-allowed':'pointer', background:'linear-gradient(135deg,#3b82f6,#2563eb)', color:'white', fontWeight:600, fontSize:14, display:'flex', alignItems:'center', justifyContent:'center', gap:8, opacity:loading?.7:1 }}>
           {loading ? <><Spin/>{t.updating}</> : t.updatePw}
@@ -330,171 +305,61 @@ function SettingsModal({ t, onClose }) {
   );
 }
 
-/* ═══════════════ MODAL 3: Notifications ═══════════════ */
-const ACTION_ICON = { card_created:'📋', card_updated:'✏️', card_deleted:'🗑️', card_moved:'🔀', card_completed:'✅', comment_added:'💬', member_assigned:'👤', board_created:'📋', board_updated:'✏️', workspace_member_added:'🏢', due_date_changed:'⏰' };
-function timeAgo(d) { const m=Math.floor((Date.now()-new Date(d))/60000); if(m<1)return'just now'; if(m<60)return`${m}m`; const h=Math.floor(m/60); if(h<24)return`${h}h`; const dd=Math.floor(h/24); if(dd<7)return`${dd}d`; return new Date(d).toLocaleDateString(); }
-
-function NotificationsModal({ t, onClose }) {
-  const { user } = useAuthStore();
-  const [loading, setLoading] = useState(true);
-  const [acts, setActs] = useState([]);
-  const [readIds, setReadIds] = useState(() => { try { return new Set(JSON.parse(localStorage.getItem('pfd_read')||'[]')); } catch { return new Set(); } });
-  const [tab, setTab] = useState('all');
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const wsRes = await apiClient.get('/workspaces');
-      const wsList = Array.isArray(wsRes?.data||wsRes) ? (wsRes?.data||wsRes) : [];
-      const all = [];
-      await Promise.all(wsList.slice(0,4).map(async ws => {
-        try {
-          const r = await apiClient.get(`/activities/workspace/${ws._id}?limit=25`);
-          const list = r?.data?.activities || r?.data || r || [];
-          if (Array.isArray(list)) all.push(...list);
-        } catch {}
-      }));
-      setActs(all.filter(a=>a.actor?._id!==user?._id).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).slice(0,40));
-    } catch { setActs([]); }
-    setLoading(false);
-  }, [user?._id]);
-
-  useEffect(() => { load(); }, [load]);
-
-  const markOne = id => setReadIds(p => { const n=new Set([...p,id]); localStorage.setItem('pfd_read',JSON.stringify([...n])); return n; });
-  const markAll = () => { const n=new Set([...readIds,...acts.map(a=>a._id)]); localStorage.setItem('pfd_read',JSON.stringify([...n])); setReadIds(n); };
-
-  const unread  = acts.filter(a=>!readIds.has(a._id)).length;
-  const shown   = tab==='unread' ? acts.filter(a=>!readIds.has(a._id)) : acts;
-
-  return (
-    <Modal title={t.notifTitle} onClose={onClose} maxW="max-w-md">
-      <div style={{ padding:'10px 20px', display:'flex', alignItems:'center', justifyContent:'space-between', borderBottom:'1px solid rgba(255,255,255,.07)' }}>
-        <div style={{ display:'flex', gap:4, background:'rgba(255,255,255,.05)', borderRadius:999, padding:3 }}>
-          {[{k:'all',l:t.tabAll},{k:'unread',l:unread>0?`${t.tabUnread} (${unread})`:t.tabUnread}].map(({k,l})=>(
-            <button key={k} type="button" onClick={()=>setTab(k)}
-              style={{ padding:'4px 12px', borderRadius:999, border:'none', cursor:'pointer', fontSize:12, fontWeight:600, transition:'all .15s', background:tab===k?'white':'transparent', color:tab===k?'#0f172a':'rgba(255,255,255,.6)' }}>
-              {l}
-            </button>
-          ))}
-        </div>
-        {unread>0 && <button type="button" onClick={markAll} style={{ background:'none', border:'none', cursor:'pointer', fontSize:11, color:'#34d399', fontWeight:500 }}>{t.markAllRead}</button>}
-      </div>
-
-      <div style={{ maxHeight:420, overflowY:'auto' }}>
-        {loading ? (
-          <div style={{ padding:'50px 0', display:'flex', flexDirection:'column', alignItems:'center', gap:12 }}>
-            <div style={{ width:32, height:32, borderRadius:'50%', border:'3px solid rgba(52,211,153,.3)', borderTopColor:'#34d399', animation:'pfd-spin .8s linear infinite' }}/>
-            <p style={{ color:'rgba(255,255,255,.4)', fontSize:13 }}>{t.loadingNotif}</p>
-          </div>
-        ) : shown.length===0 ? (
-          <div style={{ padding:'60px 0', display:'flex', flexDirection:'column', alignItems:'center', gap:12 }}>
-            <div style={{ width:52, height:52, borderRadius:14, background:'rgba(255,255,255,.05)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22 }}>🔔</div>
-            <p style={{ color:'rgba(255,255,255,.35)', fontSize:13 }}>{t.noNotif}</p>
-          </div>
-        ) : shown.map(a => {
-          const isRead = readIds.has(a._id);
-          const actor  = a.actor?.name || 'Someone';
-          const action = t[a.action] || t.unknown_action;
-          const target = a.metadata?.cardTitle || a.metadata?.boardName || a.metadata?.listName || '';
-          const icon   = ACTION_ICON[a.action] || '📣';
-          return (
-            <div key={a._id} className="pfd-notif-row"
-              style={{ display:'flex', alignItems:'flex-start', gap:12, padding:'14px 20px', position:'relative', background:isRead?'transparent':'rgba(52,211,153,.04)' }}>
-              {!isRead && <span style={{ position:'absolute', left:6, top:'50%', transform:'translateY(-50%)', width:6, height:6, borderRadius:'50%', background:'#34d399' }}/>}
-              <div style={{ width:36, height:36, borderRadius:12, background:isRead?'rgba(255,255,255,.06)':'rgba(52,211,153,.15)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>{icon}</div>
-              <div style={{ flex:1, minWidth:0 }}>
-                <p style={{ fontSize:13, color:'rgba(255,255,255,.85)', lineHeight:1.4, margin:0 }}>
-                  <strong style={{ color:'white' }}>{actor}</strong>{' '}{action}
-                  {target && <span style={{ color:'rgba(167,243,208,.7)' }}> "{target}"</span>}
-                </p>
-                <p style={{ fontSize:11, color:'rgba(255,255,255,.3)', marginTop:3, margin:0 }}>{timeAgo(a.createdAt)}</p>
-              </div>
-              <div className="pfd-notif-actions" style={{ display:'flex', gap:4, flexShrink:0 }}>
-                {!isRead && (
-                  <button type="button" title={t.markRead} onClick={()=>markOne(a._id)}
-                    style={{ width:24, height:24, borderRadius:8, border:'none', cursor:'pointer', background:'rgba(52,211,153,.15)', color:'#34d399', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1.5 5L4 7.5L8.5 2.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  </button>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <div style={{ padding:'10px 20px', borderTop:'1px solid rgba(255,255,255,.07)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-        <span style={{ fontSize:11, color:'rgba(255,255,255,.3)' }}>{t.notifCount(acts.length)}</span>
-        <button type="button" onClick={load} style={{ background:'none', border:'none', cursor:'pointer', fontSize:11, color:'rgba(52,211,153,.7)', fontWeight:500 }}>↻ Refresh</button>
-      </div>
-
-      <style>{`.pfd-notif-row:hover{background:rgba(255,255,255,.04)!important}.pfd-notif-actions{opacity:0;transition:opacity .15s}.pfd-notif-row:hover .pfd-notif-actions{opacity:1}`}</style>
-    </Modal>
-  );
-}
-
 /* ═══════════════ MAIN EXPORT ═══════════════ */
 export default function ProfileDropdown({ onLogout }) {
   const { user } = useAuthStore();
   const lang = useUiStore(s => s.language) || 'vi';
   const t    = T[lang] || T.vi;
+
   const [open,  setOpen]  = useState(false);
-  const [modal, setModal] = useState(null);
-  const [unread, setUnread] = useState(0);
+  const [modal, setModal] = useState(null); // 'profile' | 'settings' | null
   const ref = useRef(null);
   useClickOutside(ref, () => setOpen(false));
 
-  // Load badge count
-  useEffect(() => {
-    const stored = new Set(JSON.parse(localStorage.getItem('pfd_read')||'[]'));
-    apiClient.get('/workspaces').then(async r => {
-      const ws = Array.isArray(r?.data||r) ? (r?.data||r) : [];
-      if (!ws.length) return;
-      const ar = await apiClient.get(`/activities/workspace/${ws[0]._id}?limit=30`);
-      const list = ar?.data?.activities || ar?.data || ar || [];
-      if (!Array.isArray(list)) return;
-      setUnread(Math.min(list.filter(a=>a.actor?._id!==user?._id&&!stored.has(a._id)).length, 99));
-    }).catch(()=>{});
-  }, [user?._id]);
-
+  // Chỉ còn 2 mục: Profile và Settings
   const items = [
-    { key:'profile',       label:t.profile,       icon:'👤', badge:null },
-    { key:'settings',      label:t.settings,      icon:'⚙️', badge:null },
-    { key:'notifications', label:t.notifications, icon:'🔔', badge:unread||null },
+    { key:'profile',  label:t.profile,  icon:'👤' },
+    { key:'settings', label:t.settings, icon:'⚙️' },
   ];
 
   return (
     <>
       <div ref={ref} style={{ position:'relative' }}>
-        {/* ✅ Avatar button - hiện ảnh thật nếu có */}
+        {/* Avatar button */}
         <button type="button" onClick={() => setOpen(v=>!v)}
           style={{
-            position:'relative', width:36, height:36, borderRadius:'50%', padding:0,
+            position:'relative', width:36, height:36,
+            borderRadius:'50%', padding:0,
             border: open ? '2px solid #34d399' : '2px solid transparent',
             cursor:'pointer', overflow:'hidden',
-            boxShadow: open ? '0 0 0 3px rgba(52,211,153,.25)' : '0 2px 8px rgba(52,211,153,.25)',
+            boxShadow: open
+              ? '0 0 0 3px rgba(52,211,153,.25)'
+              : '0 2px 8px rgba(52,211,153,.25)',
             transition:'all .2s', background:'transparent',
           }}>
           <UserAvatar
             name={user?.name} email={user?.email}
-            avatarUrl={user?.avatar}  // ← dùng avatar thật từ store
+            avatarUrl={user?.avatar}
             size={32}
           />
-          {unread > 0 && (
-            <span style={{ position:'absolute', top:-2, right:-2, minWidth:15, height:15, padding:'0 3px', borderRadius:999, background:'#ef4444', color:'white', fontSize:8, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', border:'2px solid #0f172a', boxSizing:'border-box', zIndex:1 }}>
-              {unread > 99 ? '99+' : unread}
-            </span>
-          )}
         </button>
 
         {/* Dropdown */}
         {open && (
-          <div style={{ position:'absolute', right:0, top:'calc(100% + 8px)', width:260, borderRadius:18, overflow:'hidden', zIndex:9000, background:'linear-gradient(160deg,rgba(15,23,42,.99) 0%,rgba(8,28,25,.98) 100%)', border:'1px solid rgba(255,255,255,.1)', boxShadow:'0 24px 60px rgba(0,0,0,.55)', animation:'pfd-drop .18s cubic-bezier(.34,1.4,.64,1)' }}>
+          <div style={{
+            position:'absolute', right:0, top:'calc(100% + 8px)',
+            width:240, borderRadius:18, overflow:'hidden',
+            zIndex:9000,
+            background:'linear-gradient(160deg,rgba(15,23,42,.99) 0%,rgba(8,28,25,.98) 100%)',
+            border:'1px solid rgba(255,255,255,.1)',
+            boxShadow:'0 24px 60px rgba(0,0,0,.55)',
+            animation:'pfd-drop .18s cubic-bezier(.34,1.4,.64,1)',
+          }}>
 
-            {/* ✅ User card với avatar thật */}
-            <div style={{ padding:16 }}>
-              <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-                <UserAvatar name={user?.name} email={user?.email} avatarUrl={user?.avatar} size={44} />
+            {/* User card */}
+            <div style={{ padding:14 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <UserAvatar name={user?.name} email={user?.email} avatarUrl={user?.avatar} size={42} />
                 <div style={{ minWidth:0, flex:1 }}>
                   <p style={{ color:'white', fontWeight:600, fontSize:13, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', margin:0 }}>{user?.name}</p>
                   <p style={{ color:'rgba(167,243,208,.45)', fontSize:11, marginTop:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', margin:0 }}>{user?.email}</p>
@@ -505,30 +370,31 @@ export default function ProfileDropdown({ onLogout }) {
               </div>
             </div>
 
-            <div style={{ margin:'0 16px', borderTop:'1px solid rgba(255,255,255,.07)' }}/>
+            <div style={{ margin:'0 14px', borderTop:'1px solid rgba(255,255,255,.07)' }}/>
 
             <div style={{ padding:'6px 0' }}>
               {items.map(item => (
-                <button key={item.key} type="button" onClick={()=>{ setModal(item.key); setOpen(false); }}
+                <button key={item.key} type="button"
+                  onClick={() => { setModal(item.key); setOpen(false); }}
                   className="pfd-menu-btn"
-                  style={{ width:'100%', display:'flex', alignItems:'center', gap:12, padding:'10px 16px', background:'none', border:'none', cursor:'pointer', textAlign:'left' }}>
-                  <span style={{ fontSize:16, width:20, textAlign:'center', flexShrink:0 }}>{item.icon}</span>
+                  style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:'10px 14px', background:'none', border:'none', cursor:'pointer', textAlign:'left' }}>
+                  <span style={{ fontSize:15, width:20, textAlign:'center', flexShrink:0 }}>{item.icon}</span>
                   <span style={{ color:'rgba(167,243,208,.8)', fontSize:13, flex:1 }}>{item.label}</span>
-                  {item.badge
-                    ? <span style={{ minWidth:20, height:20, padding:'0 5px', borderRadius:999, background:'#ef4444', color:'white', fontSize:10, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center' }}>{item.badge}</span>
-                    : <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ opacity:.3 }}><path d="M4.5 3L7.5 6L4.5 9" stroke="white" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  }
+                  <svg width="11" height="11" viewBox="0 0 12 12" fill="none" style={{ opacity:.3 }}>
+                    <path d="M4.5 3L7.5 6L4.5 9" stroke="white" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
                 </button>
               ))}
             </div>
 
-            <div style={{ margin:'0 16px', borderTop:'1px solid rgba(255,255,255,.07)' }}/>
+            <div style={{ margin:'0 14px', borderTop:'1px solid rgba(255,255,255,.07)' }}/>
 
             <div style={{ padding:'6px 0' }}>
-              <button type="button" onClick={()=>{ setOpen(false); onLogout(); }}
+              <button type="button"
+                onClick={() => { setOpen(false); onLogout(); }}
                 className="pfd-logout-btn"
-                style={{ width:'100%', display:'flex', alignItems:'center', gap:12, padding:'10px 16px', background:'none', border:'none', cursor:'pointer', textAlign:'left' }}>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink:0, color:'rgba(248,113,113,.8)' }}>
+                style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:'10px 14px', background:'none', border:'none', cursor:'pointer', textAlign:'left' }}>
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" style={{ flexShrink:0, color:'rgba(248,113,113,.8)' }}>
                   <path d="M6 14H3.5A1.5 1.5 0 012 12.5v-9A1.5 1.5 0 013.5 2H6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
                   <path d="M11 11l3-3m0 0l-3-3m3 3H6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
@@ -539,9 +405,9 @@ export default function ProfileDropdown({ onLogout }) {
         )}
       </div>
 
-      {modal==='profile'       && <ProfileModal       t={t}           onClose={()=>setModal(null)} />}
-      {modal==='settings'      && <SettingsModal      t={t}           onClose={()=>setModal(null)} />}
-      {modal==='notifications' && <NotificationsModal t={t} lang={lang} onClose={()=>{ setModal(null); setUnread(0); }} />}
+      {/* Modals */}
+      {modal === 'profile'  && <ProfileModal  t={t} onClose={() => setModal(null)} />}
+      {modal === 'settings' && <SettingsModal t={t} onClose={() => setModal(null)} />}
 
       <style>{`
         @keyframes pfd-drop { from{opacity:0;transform:translateY(-10px) scale(.96)} to{opacity:1;transform:translateY(0) scale(1)} }

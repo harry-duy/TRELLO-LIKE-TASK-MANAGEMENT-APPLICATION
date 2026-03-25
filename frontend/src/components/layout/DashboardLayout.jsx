@@ -1,30 +1,27 @@
 // frontend/src/components/layout/DashboardLayout.jsx
-// ✅ 100% i18n - KHÔNG có hardcode tiếng Việt nào
-
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@store/authStore';
 import { useUiStore } from '@store/uiStore';
 import AIAssistantWidget from '@components/ai/AIAssistantWidget';
 import ProfileDropdown from '@components/layout/ProfileDropdown';
+import NotificationBell from '@components/layout/NotificationBell';
 import workspaceService from '@services/workspaceService';
 import boardService from '@services/boardService';
 import apiClient from '@config/api';
 import toast from 'react-hot-toast';
 
-/* ═══════════════════════════════════════════════
-   i18n dictionary — TẤT CẢ text trong layout
-═══════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════
+   i18n dictionary
+═══════════════════════════════════════════ */
 const L = {
   vi: {
-    // WorkspaceSwitcher
     wsLabel:       'Tổ chức',
     yourWs:        'Workspaces của bạn',
     wsLoading:     'Đang tải...',
     wsEmpty:       'Chưa có workspace nào',
     wsCreate:      '+ Tạo workspace mới',
     members:       'thành viên',
-    // NavTabs
     tabWorkspaces: 'Workspaces',
     tabRecent:     'Gần đây',
     tabStarred:    'Đã đánh dấu',
@@ -35,15 +32,12 @@ const L = {
     noStarred:     'Chưa đánh dấu board nào',
     starTip:       'Đánh dấu board',
     unstarTip:     'Bỏ đánh dấu',
-    // Search
     searchPh:      'Tìm kiếm bảng, thẻ, thành viên...',
     searchTitle:   'BOARDS',
     searchEmpty:   'Không tìm thấy kết quả',
     searchType:    'Nhập ít nhất 2 ký tự...',
-    // Buttons
     aiAssist:      'AI Assist',
     createNew:     '+ Tạo mới',
-    // Create modal
     createTitle:   'Tạo mới',
     createBoard:   'Board',
     createBoardD:  'Tạo bảng Kanban mới',
@@ -113,16 +107,22 @@ function useClickOutside(ref, cb) {
     const fn = e => { if (ref.current && !ref.current.contains(e.target)) cb(); };
     document.addEventListener('mousedown', fn);
     document.addEventListener('touchstart', fn);
-    return () => { document.removeEventListener('mousedown', fn); document.removeEventListener('touchstart', fn); };
+    return () => {
+      document.removeEventListener('mousedown', fn);
+      document.removeEventListener('touchstart', fn);
+    };
   }, [ref, cb]);
 }
 
-/** Avatar nhỏ cho board color bar */
 function BoardColor({ color, size = 28 }) {
-  return <div style={{ width: size, height: size, borderRadius: 8, background: color || '#0f766e', flexShrink: 0 }} />;
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: 8,
+      background: color || '#0f766e', flexShrink: 0,
+    }} />
+  );
 }
 
-/** Star icon */
 function StarIcon({ filled, size = 13 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16"
@@ -136,8 +136,8 @@ function StarIcon({ filled, size = 13 }) {
 
 /* ═══════════════ WORKSPACE SWITCHER ═══════════════ */
 function WorkspaceSwitcher({ l }) {
-  const [open, setOpen]   = useState(false);
-  const [list, setList]   = useState([]);
+  const [open, setOpen]     = useState(false);
+  const [list, setList]     = useState([]);
   const [loading, setLoading] = useState(false);
   const ref = useRef(null);
   const navigate = useNavigate();
@@ -165,7 +165,6 @@ function WorkspaceSwitcher({ l }) {
       {open && (
         <div className="nav-dropdown" style={{ width: 260, left: 0, top: 'calc(100% + 8px)' }}>
           <p className="nav-dropdown-title">{l.yourWs}</p>
-
           {loading ? (
             <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8, color: 'rgba(167,243,208,.6)', fontSize: 13 }}>
               <span style={{ width: 14, height: 14, borderRadius: '50%', border: '2px solid rgba(52,211,153,.4)', borderTopColor: '#34d399', animation: 'nav-spin .8s linear infinite', display: 'inline-block' }} />
@@ -190,7 +189,6 @@ function WorkspaceSwitcher({ l }) {
               ))}
             </div>
           )}
-
           <div style={{ borderTop: '1px solid rgba(255,255,255,.07)', padding: '6px 8px' }}>
             <button type="button" onClick={() => { navigate('/workspace/new'); setOpen(false); }}
               style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 10, background: 'none', border: 'none', cursor: 'pointer', color: '#34d399', fontSize: 13, fontWeight: 500 }}
@@ -205,10 +203,10 @@ function WorkspaceSwitcher({ l }) {
   );
 }
 
-/* ═══════════════ BOARD MENU ITEM (with star) ═══════════════ */
+/* ═══════════════ BOARD MENU ITEM ═══════════════ */
 function BoardItem({ board, userId, onClose, onStarChange, l }) {
-  const navigate  = useNavigate();
-  const [starred, setStarred]  = useState(() =>
+  const navigate = useNavigate();
+  const [starred, setStarred] = useState(() =>
     (board.starredBy || []).some(id => (id?._id||id)?.toString() === userId?.toString())
   );
   const [busy, setBusy] = useState(false);
@@ -229,12 +227,13 @@ function BoardItem({ board, userId, onClose, onStarChange, l }) {
       await apiClient.put(`/boards/${board._id}`, { starredBy: newList });
       if (onStarChange) onStarChange();
     } catch { setStarred(!next); }
-    finally   { setBusy(false); }
+    finally { setBusy(false); }
   };
 
   return (
     <div className="nav-dropdown-item" style={{ paddingRight: 10 }}>
-      <button type="button" onClick={() => { navigate(`/board/${board._id}`); onClose(); }}
+      <button type="button"
+        onClick={() => { navigate(`/board/${board._id}`); onClose(); }}
         style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: 0 }}>
         <BoardColor color={board.background} size={28} />
         <div style={{ minWidth: 0 }}>
@@ -254,11 +253,11 @@ function BoardItem({ board, userId, onClose, onStarChange, l }) {
 
 /* ═══════════════ NAV TABS ═══════════════ */
 function NavTabs({ user, l }) {
-  const location  = useLocation();
-  const navigate  = useNavigate();
-  const userId    = user?._id;
+  const location = useLocation();
+  const navigate = useNavigate();
+  const userId   = user?._id;
   const [active,  setActive]  = useState('workspaces');
-  const [drop,    setDrop]    = useState(null);   // 'recent' | 'starred' | null
+  const [drop,    setDrop]    = useState(null);
   const [recent,  setRecent]  = useState([]);
   const [starred, setStarred] = useState([]);
   const ref = useRef(null);
@@ -300,9 +299,9 @@ function NavTabs({ user, l }) {
     ...(user?.role === 'admin' ? [{ key: 'admin', label: l.tabAdmin }] : []),
   ];
 
-  const dropTitle  = drop === 'recent' ? l.recentBoards : l.starredBoards;
-  const dropList   = drop === 'recent' ? recent : starred;
-  const dropEmpty  = drop === 'recent' ? l.noRecent : l.noStarred;
+  const dropTitle = drop === 'recent' ? l.recentBoards : l.starredBoards;
+  const dropList  = drop === 'recent' ? recent : starred;
+  const dropEmpty = drop === 'recent' ? l.noRecent : l.noStarred;
 
   return (
     <div ref={ref} style={{ position: 'relative' }} className="hidden md:flex">
@@ -310,7 +309,9 @@ function NavTabs({ user, l }) {
         {tabs.map(tab => (
           <button key={tab.key} type="button" onClick={() => handleTab(tab.key)}
             style={{
-              display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 600, transition: 'all .2s',
+              display: 'flex', alignItems: 'center', gap: 4,
+              padding: '6px 12px', borderRadius: 999, border: 'none',
+              cursor: 'pointer', fontSize: 11, fontWeight: 600, transition: 'all .2s',
               background: active === tab.key ? 'white' : 'transparent',
               color:      active === tab.key ? '#0f172a' : 'rgba(236,253,245,.75)',
             }}
@@ -369,7 +370,8 @@ function SearchBar({ l, userId }) {
   return (
     <div ref={ref} style={{ position: 'relative', flex: 1, maxWidth: 380 }} className="hidden sm:block">
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 8, borderRadius: 999, padding: '6px 14px',
+        display: 'flex', alignItems: 'center', gap: 8,
+        borderRadius: 999, padding: '6px 14px',
         border: focused ? '1px solid rgba(255,255,255,.3)' : '1px solid rgba(255,255,255,.12)',
         background: focused ? 'rgba(255,255,255,.15)' : 'rgba(15,23,42,.4)',
         boxShadow: focused ? '0 0 0 3px rgba(52,211,153,.12)' : 'none',
@@ -421,7 +423,7 @@ function CreateModal({ onClose, l }) {
   const [bg,      setBg]      = useState('#0f766e');
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState('');
-  const navigate  = useNavigate();
+  const navigate = useNavigate();
   const ref = useRef(null);
 
   useEffect(() => {
@@ -567,10 +569,29 @@ function CreateModal({ onClose, l }) {
   );
 }
 
+/* ═══════════════ LANG TOGGLE ═══════════════ */
+function LangToggle() {
+  const lang        = useUiStore(s => s.language) || 'vi';
+  const setLanguage = useUiStore(s => s.setLanguage);
+  return (
+    <div style={{ display:'inline-flex', borderRadius:999, overflow:'hidden', background:'rgba(255,255,255,.08)', border:'1px solid rgba(255,255,255,.12)' }}>
+      {['VI','EN'].map(lc => (
+        <button key={lc} type="button" onClick={() => setLanguage(lc.toLowerCase())}
+          style={{
+            padding:'5px 9px', border:'none', cursor:'pointer', fontSize:10, fontWeight:700, transition:'all .15s',
+            background: lang===lc.toLowerCase() ? 'white' : 'transparent',
+            color:      lang===lc.toLowerCase() ? '#0f172a' : 'rgba(236,253,245,.7)',
+          }}>
+          {lc}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /* ═══════════════ MAIN LAYOUT ═══════════════ */
 export default function DashboardLayout({ children }) {
   const { user, logout } = useAuthStore();
-  // ✅ Đọc lang từ uiStore – reactive ngay khi bấm VI/EN
   const lang = useUiStore(s => s.language) || 'vi';
   const l    = L[lang] || L.vi;
 
@@ -584,8 +605,16 @@ export default function DashboardLayout({ children }) {
     <div className="min-h-screen flex flex-col board-surface text-slate-100">
 
       {/* ─── Navbar ─── */}
-      <header style={{ position:'sticky', top:0, zIndex:40, background:'rgba(15,23,42,.72)', borderBottom:'1px solid rgba(255,255,255,.08)', backdropFilter:'blur(20px)' }}>
-        <div style={{ maxWidth:1600, margin:'0 auto', padding:'0 20px', display:'flex', alignItems:'center', height:56, gap:10 }}>
+      <header style={{
+        position: 'sticky', top: 0, zIndex: 40,
+        background: 'rgba(15,23,42,.72)',
+        borderBottom: '1px solid rgba(255,255,255,.08)',
+        backdropFilter: 'blur(20px)',
+      }}>
+        <div style={{
+          maxWidth: 1600, margin: '0 auto', padding: '0 20px',
+          display: 'flex', alignItems: 'center', height: 56, gap: 10,
+        }}>
 
           {/* Logo */}
           <Link to="/dashboard" style={{ display:'flex', alignItems:'center', gap:8, textDecoration:'none', flexShrink:0 }}>
@@ -593,10 +622,7 @@ export default function DashboardLayout({ children }) {
             <span className="hidden sm:block" style={{ fontSize:15, fontWeight:700, color:'white', letterSpacing:'-.02em' }}>TaskFlow</span>
           </Link>
 
-          {/* ✅ WorkspaceSwitcher nhận l (reactive) */}
           <WorkspaceSwitcher l={l} />
-
-          {/* ✅ NavTabs nhận l (reactive) */}
           <NavTabs user={user} l={l} />
 
           {/* Search — center */}
@@ -613,16 +639,31 @@ export default function DashboardLayout({ children }) {
             {/* AI Assist */}
             <button type="button" onClick={() => setAiOpen(v=>!v)}
               className="hidden md:inline-flex"
-              style={{ alignItems:'center', gap:6, borderRadius:999, background:'rgba(52,211,153,.12)', border:'1px solid rgba(52,211,153,.22)', padding:'6px 12px', fontSize:11, fontWeight:600, color:'#6ee7b7', cursor:'pointer', transition:'all .2s' }}
+              style={{
+                alignItems:'center', gap:6, borderRadius:999,
+                background:'rgba(52,211,153,.12)',
+                border:'1px solid rgba(52,211,153,.22)',
+                padding:'6px 12px', fontSize:11, fontWeight:600,
+                color:'#6ee7b7', cursor:'pointer', transition:'all .2s',
+              }}
               onMouseEnter={e=>e.currentTarget.style.background='rgba(52,211,153,.22)'}
               onMouseLeave={e=>e.currentTarget.style.background='rgba(52,211,153,.12)'}>
               <span style={{ width:6, height:6, borderRadius:'50%', background:'#34d399', animation:'nav-pulse 1.5s ease-in-out infinite', display:'inline-block' }}/>
               {l.aiAssist}
             </button>
 
+            {/* ✅ Notification Bell — hiển thị ngoài navbar */}
+            <NotificationBell />
+
             {/* Create */}
             <button type="button" onClick={() => setShowCreate(true)}
-              style={{ display:'inline-flex', alignItems:'center', gap:4, borderRadius:999, background:'white', color:'#0f172a', padding:'6px 12px', fontSize:11, fontWeight:700, cursor:'pointer', border:'none', boxShadow:'0 1px 4px rgba(0,0,0,.2)', transition:'all .15s' }}
+              style={{
+                display:'inline-flex', alignItems:'center', gap:4,
+                borderRadius:999, background:'white', color:'#0f172a',
+                padding:'6px 12px', fontSize:11, fontWeight:700,
+                cursor:'pointer', border:'none',
+                boxShadow:'0 1px 4px rgba(0,0,0,.2)', transition:'all .15s',
+              }}
               onMouseEnter={e=>{e.currentTarget.style.background='#ecfdf5';e.currentTarget.style.transform='scale(1.02)';}}
               onMouseLeave={e=>{e.currentTarget.style.background='white';e.currentTarget.style.transform='scale(1)';}}>
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
@@ -677,26 +718,6 @@ export default function DashboardLayout({ children }) {
         }
         .nav-dropdown-item:hover { background:rgba(255,255,255,.06)!important; }
       `}</style>
-    </div>
-  );
-}
-
-/* ─── Language Toggle (dùng useUiStore trực tiếp) ─── */
-function LangToggle() {
-  const lang        = useUiStore(s => s.language) || 'vi';
-  const setLanguage = useUiStore(s => s.setLanguage);
-  return (
-    <div style={{ display:'inline-flex', borderRadius:999, overflow:'hidden', background:'rgba(255,255,255,.08)', border:'1px solid rgba(255,255,255,.12)' }}>
-      {['VI','EN'].map(lc => (
-        <button key={lc} type="button" onClick={() => setLanguage(lc.toLowerCase())}
-          style={{
-            padding:'5px 9px', border:'none', cursor:'pointer', fontSize:10, fontWeight:700, transition:'all .15s',
-            background: lang===lc.toLowerCase() ? 'white' : 'transparent',
-            color:      lang===lc.toLowerCase() ? '#0f172a' : 'rgba(236,253,245,.7)',
-          }}>
-          {lc}
-        </button>
-      ))}
     </div>
   );
 }
