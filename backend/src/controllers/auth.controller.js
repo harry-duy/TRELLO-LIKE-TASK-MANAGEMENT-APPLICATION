@@ -272,15 +272,8 @@ exports.refreshToken = asyncHandler(async (req, res, next) => {
       return next(new AppError('Invalid refresh token', 401));
     }
 
-    // Generate new access token
-    const accessToken = generateToken(user._id);
-
-    res.status(200).json({
-      success: true,
-      data: {
-        accessToken,
-      },
-    });
+    // Rotate refresh token and send new access token
+    await sendTokenResponse(user, 200, res);
   } catch (error) {
     return next(new AppError('Invalid refresh token', 401));
   }
