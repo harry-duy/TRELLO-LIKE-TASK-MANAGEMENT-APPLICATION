@@ -20,6 +20,5 @@ router.get('/analytics/trends', adminController.getSystemTrends);
 router.get('/analytics/ai-usage', adminController.getAIUsageStats);
 router.get('/activities', adminController.getSystemActivities);
 router.get('/system-resources', adminController.getSystemResources);
-router.get('/logs', adminController.getSystemLogs);
 
 module.exports = router;

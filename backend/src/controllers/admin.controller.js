@@ -461,35 +461,3 @@ exports.getSystemResources = asyncHandler(async (req, res) => {
     },
   });
 });
-
-exports.getSystemLogs = asyncHandler(async (req, res, next) => {
-  const allowedFiles = new Set(['combined.log', 'error.log', 'exceptions.log', 'rejections.log']);
-  const file = req.query.file || 'combined.log';
-  const lines = Math.min(Math.max(parseInt(req.query.lines || '200', 10), 1), 2000);
-
-  if (!allowedFiles.has(file)) {
-    return next(new AppError('Invalid log file', 400));
-  }
-
-  const logPath = path.join(__dirname, '../../logs', file);
-
-  let fileContent = '';
-  try {
-    fileContent = await fs.readFile(logPath, 'utf8');
-  } catch (error) {
-    return next(new AppError('Cannot read log file', 500));
-  }
-
-  const allLines = fileContent.split(/\r?\n/).filter(Boolean);
-  const tailLines = allLines.slice(-lines);
-
-  res.status(200).json({
-    success: true,
-    data: {
-      file,
-      lines: tailLines,
-      returned: tailLines.length,
-      total: allLines.length,
-    },
-  });
-});

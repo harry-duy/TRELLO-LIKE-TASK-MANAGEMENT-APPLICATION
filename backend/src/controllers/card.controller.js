@@ -139,13 +139,25 @@ exports.moveCard = asyncHandler(async (req, res, next) => {
 // @desc    Update card
 // @route   PUT /api/cards/:id
 exports.updateCard = asyncHandler(async (req, res, next) => {
-  const oldCard = await Card.findById(req.params.id).select('assignees title board');
-  if (!oldCard) return next(new AppError('Card not found', 404));
-  const card = await Card.findByIdAndUpdate(req.params.id, req.body, {
-    new: true, runValidators: true,
+  const card = await Card.findById(req.params.id);
+  if (!card) return next(new AppError('Card not found', 404));
+
+  const oldIsCompleted = card.isCompleted;
+  const oldAssignees = card.assignees ? [...card.assignees] : [];
+
+  Object.keys(req.body).forEach((key) => {
+    card[key] = req.body[key];
   });
+  await card.save();
+
+  if (!oldIsCompleted && card.isCompleted) {
+    await Activity.log({
+      actor: req.user._id, action: 'card_completed',
+      target: card._id,  targetType: 'Card', board: card.board,
+    });
+  }
   if (req.body.assignees) {
-    const oldIds = (oldCard.assignees || []).map((a) => a.toString());
+    const oldIds = oldAssignees.map((a) => a.toString());
     const newIds = (req.body.assignees || []).map((a) => a.toString());
     const addedIds   = newIds.filter((id) => !oldIds.includes(id));
     const removedIds = oldIds.filter((id) => !newIds.includes(id));

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import adminService from '@services/adminService';
 import apiClient from '@config/api';
@@ -17,8 +17,6 @@ export default function AdminDashboard() {
   const [boardSearch,        setBoardSearch]        = useState('');
   const [boardClosedFilter,  setBoardClosedFilter]  = useState('');
   const [activityActionFilter,setActivityActionFilter] = useState('');
-  const [logFile,            setLogFile]            = useState('combined.log');
-  const [logLines,           setLogLines]           = useState(150);
   const [analyticsDays,      setAnalyticsDays]      = useState(7);
 
   const queryParams = useMemo(() => ({
@@ -60,17 +58,24 @@ export default function AdminDashboard() {
     queryKey: ['admin-ai-usage'],
     queryFn: () => adminService.getAIUsageStats(30),
   });
-  const { data: activityData, isLoading: isActivityLoading } = useQuery({
+  const {
+    data: activityData,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading: isActivityLoading
+  } = useInfiniteQuery({
     queryKey: ['admin-system-activities', activityActionFilter],
-    queryFn: () => adminService.getSystemActivities({ page: 1, limit: 20, action: activityActionFilter }),
+    queryFn: ({ pageParam }) => adminService.getSystemActivities({ page: pageParam, limit: 30, action: activityActionFilter }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => {
+      const { page, totalPages } = lastPage.data.pagination;
+      return page < totalPages ? page + 1 : undefined;
+    },
   });
   const { data: resourceData, isLoading: isResourceLoading } = useQuery({
     queryKey: ['admin-system-resources'],
     queryFn: () => adminService.getSystemResources(),
-  });
-  const { data: logsData, isLoading: isLogsLoading } = useQuery({
-    queryKey: ['admin-system-logs', logFile, logLines],
-    queryFn: () => adminService.getSystemLogs({ file: logFile, lines: logLines }),
   });
 
   const users        = data?.data || [];
@@ -81,9 +86,8 @@ export default function AdminDashboard() {
   const userPerf     = workspaceAnalyticsData?.userPerformance || [];
   const aiSummary    = aiUsageData?.data?.summary || {};
   const aiByFeature  = aiUsageData?.data?.byFeature || [];
-  const activities   = activityData?.data?.activities || [];
+  const activities   = activityData?.pages?.flatMap(page => page.data.activities) || [];
   const resources    = resourceData?.data || {};
-  const logs         = logsData?.data?.lines || [];
 
   const refreshUsers      = () => queryClient.invalidateQueries({ queryKey: ['admin-users'] });
   const refreshWorkspaces = () => queryClient.invalidateQueries({ queryKey: ['admin-workspaces'] });
@@ -290,7 +294,7 @@ export default function AdminDashboard() {
       {/* ── System Activity ── */}
       <div className="pt-4 border-t border-white/10">
         <h2 className="text-xl font-semibold text-white">Activity toàn hệ thống</h2>
-        <div className="mt-3">
+        <div className="mt-3 flex gap-3 flex-wrap">
           <select className="input w-56" value={activityActionFilter} onChange={e => setActivityActionFilter(e.target.value)}>
             <option value="">Tất cả hành động</option>
             <option value="card_created">card_created</option>
@@ -300,7 +304,15 @@ export default function AdminDashboard() {
             <option value="attachment_added">attachment_added</option>
           </select>
         </div>
-        <div className="card bg-white/10 border border-white/10 overflow-auto mt-3">
+        <div 
+          className="card bg-white/10 border border-white/10 overflow-auto mt-3 h-96 relative"
+          onScroll={(e) => {
+            const { scrollTop, clientHeight, scrollHeight } = e.currentTarget;
+            if (scrollHeight - scrollTop <= clientHeight + 50 && hasNextPage && !isFetchingNextPage) {
+              fetchNextPage();
+            }
+          }}
+        >
           {isActivityLoading ? (
             <div className="p-4 text-sm text-emerald-100/70">Đang tải...</div>
           ) : (
@@ -315,8 +327,8 @@ export default function AdminDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {activities.map(act => (
-                  <tr key={act._id} className="border-t border-white/10">
+                {activities.map((act, i) => (
+                  <tr key={`${act._id}-${i}`} className="border-t border-white/10">
                     <td className="px-4 py-3">{new Date(act.createdAt).toLocaleString()}</td>
                     <td className="px-4 py-3">{act.actor?.email || 'N/A'}</td>
                     <td className="px-4 py-3">
@@ -326,8 +338,11 @@ export default function AdminDashboard() {
                     <td className="px-4 py-3">{act.board?.name || '-'}</td>
                   </tr>
                 ))}
-                {activities.length === 0 && (
+                {activities.length === 0 && !isActivityLoading && (
                   <tr><td className="px-4 py-5 text-center text-emerald-100/70" colSpan={5}>Chưa có activity.</td></tr>
+                )}
+                {isFetchingNextPage && (
+                  <tr><td className="px-4 py-3 text-center text-emerald-100/70" colSpan={5}>Đang tải thêm...</td></tr>
                 )}
               </tbody>
             </table>
@@ -355,31 +370,6 @@ export default function AdminDashboard() {
             </div>
           </div>
         )}
-
-        {/* System Logs */}
-        <div className="card bg-white/10 border border-white/10 p-3 mt-3">
-          <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
-            <h3 className="text-sm font-semibold text-emerald-50">System Logs</h3>
-            <div className="flex gap-2">
-              <select className="input py-1" value={logFile} onChange={e => setLogFile(e.target.value)}>
-                <option value="combined.log">combined.log</option>
-                <option value="error.log">error.log</option>
-                <option value="exceptions.log">exceptions.log</option>
-                <option value="rejections.log">rejections.log</option>
-              </select>
-              <input type="number" min={20} max={500} value={logLines}
-                onChange={e => setLogLines(Number(e.target.value) || 150)}
-                className="input py-1 w-28" />
-            </div>
-          </div>
-          {isLogsLoading ? (
-            <div className="text-sm text-emerald-100/70 mt-3">Đang tải logs...</div>
-          ) : (
-            <pre className="mt-3 max-h-72 overflow-auto rounded bg-black/40 p-3 text-xs text-emerald-100 whitespace-pre-wrap">
-              {logs.length > 0 ? logs.join('\n') : 'No log lines returned.'}
-            </pre>
-          )}
-        </div>
       </div>
 
       {/* ── User Management ── */}

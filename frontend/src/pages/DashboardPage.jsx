@@ -424,8 +424,8 @@ function MembersModal({ workspace, isGuest, l, onClose }) {
   useEffect(() => { load(); }, [wsId]);
 
   const ownerId = (wsData?.owner?._id || wsData?.owner)?.toString();
-  const isOwner = ownerId === user?._id?.toString();
-  const isAdmin = isOwner || (wsData?.members || []).some(m => (m.user?._id || m.user)?.toString() === user?._id?.toString() && m.role === 'admin');
+  const isOwner = ownerId === user?._id?.toString() || user?.role === 'admin';
+  const isAdmin = isOwner || (wsData?.members || []).some(m => (m.user?._id || m.user)?.toString() === user?._id?.toString() && m.role === 'admin') || user?.role === 'admin';
   const roleColor = { owner: '#fbbf24', admin: '#60a5fa', staff: '#a78bfa', member: 'rgba(255,255,255,.45)' };
   const roleLabel = { owner: l.ownerRole, admin: l.adminRole, staff: l.staffRole, member: l.memberRole };
 

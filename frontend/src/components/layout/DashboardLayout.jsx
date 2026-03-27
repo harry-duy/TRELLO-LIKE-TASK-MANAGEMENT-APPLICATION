@@ -10,6 +10,7 @@ import workspaceService from '@services/workspaceService';
 import boardService from '@services/boardService';
 import apiClient from '@config/api';
 import toast from 'react-hot-toast';
+import Footer from '@components/layout/Footer';
 
 /* ═══════════════════════════════════════════
    i18n dictionary
@@ -596,13 +597,15 @@ export default function DashboardLayout({ children }) {
   const l    = L[lang] || L.vi;
 
   const navigate = useNavigate();
+  const location = useLocation();
   const [showCreate, setShowCreate] = useState(false);
   const [aiOpen,     setAiOpen]     = useState(false);
 
   const handleLogout = async () => { await logout(); navigate('/login'); };
+  const isBoardPage = location.pathname.startsWith('/board/');
 
   return (
-    <div className="min-h-screen flex flex-col board-surface text-slate-100">
+    <div className={`min-h-screen flex flex-col text-slate-100 ${isBoardPage ? 'board-surface' : 'bg-slate-900'}`}>
 
       {/* ─── Navbar ─── */}
       <header style={{
@@ -677,9 +680,14 @@ export default function DashboardLayout({ children }) {
       </header>
 
       {/* ─── Page content ─── */}
-      <main style={{ flex:1, maxWidth:1600, width:'100%', margin:'0 auto', padding:'24px 20px' }}>
-        {children}
+      <main style={{ flex:1, width:'100%', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ maxWidth:1600, width:'100%', margin:'0 auto', padding:'24px 20px', flex:1 }}>
+          {children}
+        </div>
       </main>
+
+      {/* ─── Footer ─── */}
+      {!isBoardPage && <Footer />}
 
       {showCreate && <CreateModal onClose={() => setShowCreate(false)} l={l} />}
       <AIAssistantWidget forceOpen={aiOpen} onToggle={() => setAiOpen(v=>!v)} />

@@ -99,16 +99,6 @@ const adminService = {
   getSystemResources: async () => {
     return apiClient.get('/admin/system-resources');
   },
-
-  getSystemLogs: async (params = {}) => {
-    const query = new URLSearchParams();
-    if (params.file) query.set('file', params.file);
-    if (params.lines) query.set('lines', String(params.lines));
-
-    const queryString = query.toString();
-    const path = queryString ? `/admin/logs?${queryString}` : '/admin/logs';
-    return apiClient.get(path);
-  },
 };
 
 export default adminService;

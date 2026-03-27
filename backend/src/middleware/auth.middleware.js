@@ -66,6 +66,12 @@ const isWorkspaceMember = asyncHandler(async (req, res, next) => {
     return next(new AppError('Workspace not found', 404));
   }
 
+  // Admin override
+  if (req.user.role === 'admin') {
+    req.workspace = workspace;
+    return next();
+  }
+
   // Check if user is member or owner
   const isMember = workspace.members.some(
     (member) => member.user.toString() === req.user._id.toString()
@@ -90,8 +96,16 @@ const isBoardMember = asyncHandler(async (req, res, next) => {
     return next(new AppError('Board not found', 404));
   }
 
-  // Check if user is workspace member
   const workspace = board.workspace;
+
+  // Admin override
+  if (req.user.role === 'admin') {
+    req.board = board;
+    req.workspace = workspace;
+    return next();
+  }
+
+  // Check if user is workspace member
   const isMember = workspace.members.some(
     (member) => member.user.toString() === req.user._id.toString()
   );
@@ -111,8 +125,8 @@ const checkWorkspacePermission = (requiredRole) => {
     const workspace = req.workspace;
     const userId = req.user._id.toString();
 
-    // Owner has all permissions
-    if (workspace.owner.toString() === userId) {
+    // Admin override & Owner have all permissions
+    if (req.user.role === 'admin' || workspace.owner.toString() === userId) {
       return next();
     }
 

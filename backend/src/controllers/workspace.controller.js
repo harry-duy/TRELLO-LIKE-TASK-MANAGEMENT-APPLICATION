@@ -30,7 +30,15 @@ const isWorkspaceOwner = (workspace, userId, systemRole) => {
 // GET /api/workspaces
 // ─────────────────────────────────────────────────────────────────────────────
 exports.getMyWorkspaces = asyncHandler(async (req, res) => {
-  const workspaces = await Workspace.findByUser(req.user._id);
+  let workspaces;
+  if (req.user.role === 'admin') {
+    workspaces = await Workspace.find({ isActive: true })
+      .populate('owner', 'name email avatar')
+      .populate('members.user', 'name email avatar')
+      .sort({ updatedAt: -1 });
+  } else {
+    workspaces = await Workspace.findByUser(req.user._id);
+  }
   res.status(200).json({ success: true, data: workspaces });
 });
 
