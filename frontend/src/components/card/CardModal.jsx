@@ -407,7 +407,12 @@ export default function CardModal({ cardId, boardId, onClose }) {
             {aiChecklist.length > 0 && (
               <button type="button" className="btn btn-primary btn-sm"
                 onClick={async () => {
-                  for (const item of aiChecklist) await cardService.addChecklistItem(cardId, item);
+                  const itemsToAdd = aiChecklist.filter(item => item.trim());
+                  if (itemsToAdd.length === 0) {
+                    setAiChecklist([]);
+                    return;
+                  }
+                  for (const item of itemsToAdd) await cardService.addChecklistItem(cardId, item);
                   queryClient.invalidateQueries(['card', cardId]);
                   setAiChecklist([]);
                   toast.success(t('addedAiChecklistSuccess'));
@@ -417,8 +422,31 @@ export default function CardModal({ cardId, boardId, onClose }) {
             )}
           </div>
           {aiChecklist.length > 0 && (
-            <div className="mb-4 rounded-xl border border-white/10 bg-white/5 p-3 space-y-1">
-              {aiChecklist.map(item => <div key={item} className="text-sm text-emerald-50/80">• {item}</div>)}
+            <div className="mb-4 rounded-xl border border-white/10 bg-white/5 p-3 space-y-2">
+              <div className="text-xs text-emerald-100/60 mb-2">
+                {lang === 'vi' ? 'Bạn có thể chỉnh sửa các đề xuất dưới đây trước khi thêm:' : 'You can edit these suggestions before adding:'}
+              </div>
+              {aiChecklist.map((item, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <span className="text-emerald-50/50">•</span>
+                  <input
+                    className="input min-w-0 flex-1 py-1 text-sm bg-black/20 border-transparent hover:border-white/10 focus:border-emerald-500/50"
+                    value={item}
+                    onChange={e => {
+                      const newList = [...aiChecklist];
+                      newList[idx] = e.target.value;
+                      setAiChecklist(newList);
+                    }}
+                  />
+                  <button type="button" className="text-red-400 hover:text-red-300 px-2"
+                    onClick={() => {
+                      const newList = aiChecklist.filter((_, i) => i !== idx);
+                      setAiChecklist(newList);
+                    }}>
+                    ✕
+                  </button>
+                </div>
+              ))}
             </div>
           )}
           <div className="space-y-2 mb-4">
