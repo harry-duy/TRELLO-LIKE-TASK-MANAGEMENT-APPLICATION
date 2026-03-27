@@ -6,19 +6,24 @@ const { validate, cardSchemas } = require('../middleware/validation.middleware')
 
 router.use(protect);
 
-router.get('/search', cardController.searchCards);
-router.post('/', validate(cardSchemas.create), cardController.createCard);
-router.put('/:id/move', validate(cardSchemas.move), cardController.moveCard);
-router.get('/:id', cardController.getCardDetails);
-router.put('/:id', cardController.updateCard);
+router.get('/search',    cardController.searchCards);
+router.post('/',         validate(cardSchemas.create), cardController.createCard);
+router.put('/:id/move',  validate(cardSchemas.move),   cardController.moveCard);
+router.get('/:id',       cardController.getCardDetails);
+router.put('/:id',       cardController.updateCard);
+router.delete('/:id',    cardController.deleteCard);
+
+// Comments
 router.post('/:id/comments', cardController.addComment);
-router.delete('/:id', cardController.deleteCard);
-router.post('/:id/checklist', validate(cardSchemas.addChecklistItem), cardController.addChecklistItem);
-router.patch('/:id/checklist/:itemId', cardController.toggleChecklistItem);
-router.post(
-  '/:id/checklist/:itemId/move',
-  validate(cardSchemas.moveChecklistItem),
-  cardController.moveChecklistItem
-);
+
+// Checklist
+router.post('/:id/checklist',         validate(cardSchemas.addChecklistItem), cardController.addChecklistItem);
+router.patch('/:id/checklist/:itemId',                                         cardController.toggleChecklistItem);
+router.post('/:id/checklist/:itemId/move', validate(cardSchemas.moveChecklistItem), cardController.moveChecklistItem);
+
+// ── Attachments (NEW) ──────────────────────────────────────────────────
+// upload.single('file') được xử lý bên trong addAttachment (middleware array)
+router.post('/:id/attachments',               cardController.addAttachment);
+router.delete('/:id/attachments/:attachmentId', cardController.deleteAttachment);
 
 module.exports = router;

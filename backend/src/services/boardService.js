@@ -29,9 +29,10 @@ const boardService = {
     return response?.data ?? response;
   },
 
-  // ✅ Gọi PATCH /boards/:id/star — không cần userId, backend dùng JWT
+  // ✅ Gọi đúng route PATCH /boards/:id/star
   toggleStar: async (boardId) => {
     const response = await apiClient.patch(`/boards/${boardId}/star`);
+    // response: { success, isStarred, data: { _id, starredBy } }
     return response?.data ?? response;
   },
 };

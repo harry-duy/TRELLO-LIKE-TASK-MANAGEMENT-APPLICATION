@@ -1,26 +1,29 @@
 import { useMemo, useState } from 'react';
-import { useDroppable } from '@dnd-kit/core';
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import cardService from '@services/cardService';
 import listService from '@services/listService';
 import { useTranslation } from '@hooks/useTranslation';
 import { SortableCard } from './SortableCard';
 
-export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdated }) {
+export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdated, columnWidth }) {
   const { t } = useTranslation();
   const [isAdding, setIsAdding] = useState(false);
   const [title, setTitle] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(list.name);
 
-  const { setNodeRef, isOver } = useDroppable({
-    id: list._id,
-  });
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+    isOver,
+  } = useSortable({ id: list._id, data: { type: 'list' } });
 
-  const cards = useMemo(
-    () => (Array.isArray(list.cards) ? list.cards : []),
-    [list.cards]
-  );
+  const cards = useMemo(() => (Array.isArray(list.cards) ? list.cards : []), [list.cards]);
 
   const handleAddCard = async () => {
     if (!title.trim()) return;
@@ -32,7 +35,7 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
       });
       setTitle('');
       setIsAdding(false);
-      if (onCardAdded) onCardAdded();
+      onCardAdded?.();
     } catch (err) {
       console.error(t('createCardError'), err);
     }
@@ -43,7 +46,7 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
     try {
       await listService.updateList(list._id, { name: name.trim() });
       setIsEditing(false);
-      if (onListUpdated) onListUpdated();
+      onListUpdated?.();
     } catch (err) {
       console.error(t('updateListError'), err);
     }
@@ -54,7 +57,8 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
     if (!ok) return;
     try {
       await listService.deleteList(list._id);
-      if (onListUpdated) onListUpdated();
+      setIsEditing(false);
+      onListUpdated?.();
     } catch (err) {
       console.error(t('deleteListError'), err);
     }
@@ -64,49 +68,104 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
     <>
       <div
         ref={setNodeRef}
-        className={`list-column w-72 ${isOver ? 'ring-2 ring-white/70' : ''}`}
+        className="list-column"
+        style={{
+          transform: CSS.Transform.toString(transform),
+          transition,
+          width: columnWidth,
+          minWidth: columnWidth,
+          outline: isOver ? '2px solid rgba(125,211,252,.45)' : 'none',
+          outlineOffset: '-2px',
+          opacity: isDragging ? 0.45 : 1,
+          boxShadow: isDragging ? '0 24px 44px rgba(15,23,42,.24)' : undefined,
+        }}
       >
-        <div className="px-4 pt-4 pb-3 flex items-center justify-between gap-2">
-          <div className="flex-1">
-            <div className="list-pill">{t('listLabel')}</div>
-            <h3 className="text-base font-semibold text-white mt-1 heading-soft">
+        <div className="list-column-header">
+          <div
+            className="min-w-0 flex flex-1 items-center gap-2.5"
+            {...attributes}
+            {...listeners}
+            style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+          >
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: 999,
+                background: 'linear-gradient(135deg, rgba(125,211,252,.95), rgba(45,212,191,.85))',
+                boxShadow: '0 0 0 4px rgba(125,211,252,.08)',
+                flexShrink: 0,
+              }}
+            />
+            <h3
+              className="list-column-title"
+              title={list.name}
+              onClick={() => setIsEditing(true)}
+            >
               {list.name}
             </h3>
           </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-emerald-50/70 bg-white/10 px-2 py-1 rounded-full">
-            {cards.length}
-          </span>
-          <button
-            className="h-7 w-7 rounded-full border border-white/10 text-emerald-50/70 hover:text-white hover:border-white/30 transition flex items-center justify-center text-xs"
-            onClick={() => setIsEditing(true)}
-            title={t('editList')}
-            type="button"
-          >
-            ✎
-          </button>
-          <button
-            className="h-7 w-7 rounded-full border border-white/10 text-red-200 hover:text-white hover:border-red-300 transition flex items-center justify-center text-xs"
-            onClick={handleDeleteList}
-            title={t('deleteList')}
-            type="button"
-          >
-            🗑
-          </button>
-        </div>
-      </div>
 
-        <div className="px-2 pb-2 flex-1 overflow-y-auto custom-scrollbar">
-          <SortableContext
-            items={cards.map((card) => card._id)}
-            strategy={verticalListSortingStrategy}
-          >
+          <div className="list-column-actions" style={{ opacity: 1 }}>
+            <span className="list-column-count">{cards.length}</span>
+            <button
+              type="button"
+              title={t('editList')}
+              onClick={() => setIsEditing(true)}
+              style={{
+                width: 30,
+                height: 30,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: '1px solid rgba(255,255,255,.06)',
+                borderRadius: '10px',
+                background: 'rgba(255,255,255,.04)',
+                color: 'rgba(255,255,255,.55)',
+                cursor: 'pointer',
+                transition: 'background 120ms, color 120ms',
+                fontSize: 12,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(255,255,255,.1)';
+                e.currentTarget.style.color = 'white';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(255,255,255,.04)';
+                e.currentTarget.style.color = 'rgba(255,255,255,.55)';
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                <circle cx="8" cy="3.5" r="1.25" fill="currentColor" />
+                <circle cx="8" cy="8" r="1.25" fill="currentColor" />
+                <circle cx="8" cy="12.5" r="1.25" fill="currentColor" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div
+          className="custom-scrollbar"
+          style={{
+            padding: '2px 10px 6px',
+            flex: 1,
+            overflowY: 'auto',
+            overflowX: 'hidden',
+          }}
+        >
+          <SortableContext items={cards.map((card) => card._id)} strategy={verticalListSortingStrategy}>
             {cards.map((card) => (
               <button
                 key={card._id}
                 type="button"
-                onClick={() => onCardClick && onCardClick(card._id)}
+                onClick={() => onCardClick?.(card._id)}
                 className="w-full text-left"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  display: 'block',
+                }}
               >
                 <SortableCard card={card} />
               </button>
@@ -114,39 +173,87 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
           </SortableContext>
 
           {!cards.length && (
-            <div className="text-xs text-emerald-50/60 italic px-1 py-2">
+            <div
+              style={{
+                padding: '12px 8px 10px',
+                fontSize: 12,
+                color: 'rgba(255,255,255,.42)',
+                fontStyle: 'italic',
+                lineHeight: 1.5,
+              }}
+            >
               {t('noCardsYet')}
             </div>
           )}
         </div>
 
-        <div className="p-3 pt-2 border-t border-white/10">
+        <div style={{ padding: '6px 10px 10px', borderTop: '1px solid rgba(255,255,255,.06)' }}>
           {isAdding ? (
             <div>
               <textarea
+                autoFocus
                 className="w-full p-2 border rounded-lg shadow-sm mb-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                 placeholder={t('cardTitlePlaceholder')}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleAddCard();
+                  }
+                  if (e.key === 'Escape') {
+                    setIsAdding(false);
+                    setTitle('');
+                  }
+                }}
+                style={{
+                  resize: 'none',
+                  marginBottom: 8,
+                  borderRadius: '12px',
+                  fontSize: 14,
+                  boxShadow: '0 8px 20px rgba(0,0,0,.18)',
+                }}
               />
-              <div className="flex gap-2">
-                <button onClick={handleAddCard} className="btn btn-primary btn-sm">
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <button className="btn btn-primary btn-sm" onClick={handleAddCard}>
                   {t('addCard')}
                 </button>
                 <button
-                  onClick={() => setIsAdding(false)}
-                  className="text-slate-500"
+                  type="button"
+                  onClick={() => {
+                    setIsAdding(false);
+                    setTitle('');
+                  }}
+                  style={{
+                    width: 30,
+                    height: 30,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: 'none',
+                    borderRadius: '10px',
+                    background: 'transparent',
+                    color: 'var(--color-text-secondary)',
+                    cursor: 'pointer',
+                    fontSize: 14,
+                    transition: 'background 120ms',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(255,255,255,.08)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent';
+                  }}
                 >
-                  {t('cancel')}
+                  x
                 </button>
               </div>
             </div>
           ) : (
-            <button
-              onClick={() => setIsAdding(true)}
-              className="w-full p-2 text-slate-600 hover:bg-slate-100 text-left rounded-lg"
-            >
+            <button type="button" className="add-card-btn" onClick={() => setIsAdding(true)}>
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                <path d="M8 2v12M2 8h12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+              </svg>
               {t('addNewCard')}
             </button>
           )}
@@ -154,14 +261,28 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
       </div>
 
       {isEditing && (
-        <div className="modal-overlay" onClick={() => setIsEditing(false)}>
+        <div
+          className="modal-overlay"
+          onClick={() => {
+            setIsEditing(false);
+            setName(list.name);
+          }}
+        >
           <div
-            className="modal-content card-modal max-w-md"
+            className="modal-content"
+            style={{ maxWidth: 360, padding: 20 }}
             onClick={(e) => e.stopPropagation()}
           >
-            <header className="mb-4">
-              <h3 className="text-lg font-semibold heading-soft">{t('renameList')}</h3>
-            </header>
+            <h3
+              style={{
+                fontSize: 16,
+                fontWeight: 600,
+                marginBottom: 16,
+                color: 'var(--color-text-heading)',
+              }}
+            >
+              {t('renameList')}
+            </h3>
             <input
               className="input"
               value={name}
@@ -175,19 +296,24 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
               }}
               autoFocus
             />
-            <div className="flex justify-end gap-2 mt-4">
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={() => {
-                  setIsEditing(false);
-                  setName(list.name);
-                }}
-              >
-                {t('cancel')}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', marginTop: 12 }}>
+              <button type="button" className="btn btn-danger btn-sm" onClick={handleDeleteList}>
+                {t('deleteList')}
               </button>
-              <button className="btn btn-primary btn-sm" onClick={handleUpdateList}>
-                {t('save')}
-              </button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => {
+                    setIsEditing(false);
+                    setName(list.name);
+                  }}
+                >
+                  {t('cancel')}
+                </button>
+                <button className="btn btn-primary btn-sm" onClick={handleUpdateList}>
+                  {t('save')}
+                </button>
+              </div>
             </div>
           </div>
         </div>

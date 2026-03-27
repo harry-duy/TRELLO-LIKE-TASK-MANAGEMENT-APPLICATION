@@ -1,0 +1,15 @@
+6ef2dbe Merge pull request #12 from harry-duy/feature/add-member_notifi
+726d479 update-26/3
+ backend/src/controllers/activity.controller.js | 145 +++---
+ backend/src/controllers/board.controller.js    |  95 ++--
+ backend/src/controllers/card.controller.js     | 237 ++++-----
+ backend/src/routes/card.routes.js              |  31 +-
+ backend/tests/api.integration.test.js          | 182 +++----
+ docs/TESTING-REPORT.md                         | 138 +++++
+ docs/postman-collection.json                   | 450 +++++++++++++++++
+ frontend/src/components/board/FilterBar.jsx    | 241 +++++----
+ frontend/src/components/card/CardModal.jsx     | 319 ++++++------
+ frontend/src/pages/AdminDashboard.jsx          | 666 ++++++++++---------------
+ frontend/src/pages/BoardPage.jsx               | 404 ++++++++-------
+ 11 files changed, 1708 insertions(+), 1200 deletions(-)
+9490fe8 Merge pull request #11 from harry-duy/feature/add-member_notifi

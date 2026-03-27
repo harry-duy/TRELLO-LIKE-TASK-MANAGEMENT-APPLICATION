@@ -50,6 +50,16 @@ const buildFallbackChecklist = ({ title = '', description = '' }) => {
     ];
   }
 
+  if (text.includes('login') || text.includes('đăng nhập')) {
+    return [
+      'Thiết kế giao diện form đăng nhập',
+      'Thêm validate email và mật khẩu',
+      'Kết nối API đăng nhập và nhận Token',
+      'Lưu Token an toàn (Cookie/Storage)',
+      'Xử lý lỗi sai tài khoản hoặc mật khẩu',
+    ];
+  }
+
   if (text.includes('api')) {
     return [
       'Thiết kế request/response schema',
@@ -101,7 +111,7 @@ exports.generateChecklist = async ({ title, description }) => {
         {
           role: 'system',
           content:
-            'You are a project management assistant. Return only a JSON array of 4-8 concise checklist items in Vietnamese.',
+            'You are an expert technical project manager. Based on standard real-world best practices (like searching Google for best practices), return only a JSON array of 4-8 concise, actionable checklist items in Vietnamese. Make them very reasonable and logical for the card title (e.g. if the title is "login", suggest UI layout, input validation, calling Auth API, token handling, error handling).',
         },
         {
           role: 'user',

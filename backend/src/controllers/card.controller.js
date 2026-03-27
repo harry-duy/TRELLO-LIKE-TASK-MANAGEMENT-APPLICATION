@@ -3,74 +3,79 @@ const Board = require('../models/board.model');
 const Workspace = require('../models/workspace.model');
 const Activity = require('../models/activity.model');
 const { asyncHandler, AppError } = require('../middleware/errorHandler');
+const notify = require('../utils/notifyHelper');
+const { cloudinary, upload } = require('../config/cloudinary');
 
 const ensureBoardAccess = async (boardId, user) => {
   const board = await Board.findById(boardId).select('workspace');
-  if (!board) {
-    throw new AppError('Board not found', 404);
-  }
-
-  if (user.role === 'admin') {
-    return board;
-  }
-
+  if (!board) throw new AppError('Board not found', 404);
+  if (user.role === 'admin') return board;
   const workspace = await Workspace.findById(board.workspace).select('owner members');
-  if (!workspace) {
-    throw new AppError('Workspace not found', 404);
-  }
-
+  if (!workspace) throw new AppError('Workspace not found', 404);
   const isOwner = workspace.owner?.toString() === user._id.toString();
   const isMember = (workspace.members || []).some(
     (member) => member.user?.toString() === user._id.toString()
   );
-
-  if (!isOwner && !isMember) {
-    throw new AppError('You do not have access to this board', 403);
-  }
-
+  if (!isOwner && !isMember) throw new AppError('You do not have access to this board', 403);
   return board;
 };
 
-// @desc    Search cards in a board
+// @desc    Search cards in a board (with pagination)
 // @route   GET /api/cards/search
 exports.searchCards = asyncHandler(async (req, res, next) => {
   const { boardId, keyword, labels, assignees, dueDateStatus } = req.query;
+  const page  = Math.max(parseInt(req.query.page  || '1',  10), 1);
+  const limit = Math.min(parseInt(req.query.limit || '50', 10), 100);
+  const sort  = req.query.sort === 'oldest' ? { createdAt: 1 } : { updatedAt: -1 };
 
-  if (!boardId) {
-    return next(new AppError('boardId is required', 400));
-  }
-
+  if (!boardId) return next(new AppError('boardId is required', 400));
   await ensureBoardAccess(boardId, req.user);
 
   const filters = {
     keyword: typeof keyword === 'string' ? keyword.trim() : '',
-    labels:
-      typeof labels === 'string'
-        ? labels
-            .split(',')
-            .map((item) => item.trim())
-            .filter(Boolean)
-        : [],
-    assignees:
-      typeof assignees === 'string'
-        ? assignees
-            .split(',')
-            .map((item) => item.trim())
-            .filter(Boolean)
-        : [],
+    labels: typeof labels === 'string'
+      ? labels.split(',').map((s) => s.trim()).filter(Boolean)
+      : [],
+    assignees: typeof assignees === 'string'
+      ? assignees.split(',').map((s) => s.trim()).filter(Boolean)
+      : [],
     dueDateStatus:
-      dueDateStatus === 'overdue' || dueDateStatus === 'due-soon'
-        ? dueDateStatus
-        : undefined,
+      dueDateStatus === 'overdue' || dueDateStatus === 'due-soon' ? dueDateStatus : undefined,
   };
 
-  const cards = await Card.search(boardId, filters);
+  const query = { board: boardId, isArchived: false };
+  if (filters.keyword) query.$text = { $search: filters.keyword };
+  if (filters.labels.length)    query.labels    = { $in: filters.labels };
+  if (filters.assignees.length) query.assignees = { $in: filters.assignees };
+  if (filters.dueDateStatus) {
+    const now = new Date();
+    if (filters.dueDateStatus === 'overdue') {
+      query.dueDate = { $lt: now };
+      query.isCompleted = false;
+    } else if (filters.dueDateStatus === 'due-soon') {
+      query.dueDate = { $gte: now, $lte: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000) };
+      query.isCompleted = false;
+    }
+  }
+
+  const [cards, total] = await Promise.all([
+    Card.find(query)
+      .populate('assignees', 'name email avatar')
+      .populate('list', 'name')
+      .sort(sort)
+      .skip((page - 1) * limit)
+      .limit(limit),
+    Card.countDocuments(query),
+  ]);
 
   res.status(200).json({
     success: true,
     data: cards,
     meta: {
-      count: cards.length,
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
       filters,
     },
   });
@@ -80,14 +85,12 @@ exports.searchCards = asyncHandler(async (req, res, next) => {
 // @route   POST /api/cards
 exports.createCard = asyncHandler(async (req, res) => {
   const { title, listId, boardId } = req.body;
-
   const card = await Card.create({
     title,
     list: listId,
     board: boardId,
     createdBy: req.user._id,
   });
-
   await Activity.log({
     actor: req.user._id,
     action: 'card_created',
@@ -95,7 +98,6 @@ exports.createCard = asyncHandler(async (req, res) => {
     targetType: 'Card',
     board: boardId,
   });
-
   res.status(201).json({ success: true, data: card });
 });
 
@@ -104,14 +106,10 @@ exports.createCard = asyncHandler(async (req, res) => {
 exports.moveCard = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
   const { listId, position, boardId } = req.body;
-
   const card = await Card.findById(id);
   if (!card) return next(new AppError('Card not found', 404));
-
   const oldListId = card.list;
-
   await card.moveToList(listId, position);
-
   await Activity.log({
     actor: req.user._id,
     action: 'card_moved',
@@ -120,29 +118,74 @@ exports.moveCard = asyncHandler(async (req, res, next) => {
     board: boardId,
     metadata: { fromList: oldListId, toList: listId },
   });
-
   const io = req.app.get('io');
   io.to(`board:${boardId}`).emit('card:moved', {
-    cardId: id,
-    fromListId: oldListId,
-    toListId: listId,
-    position,
-    movedBy: req.user._id,
+    cardId: id, fromListId: oldListId, toListId: listId, position, movedBy: req.user._id,
   });
-
+  if (card.assignees?.length > 0) {
+    await notify(io, {
+      actor:      req.user._id,
+      recipients: card.assignees.map((a) => a._id || a),
+      type:       'card_moved',
+      title:      'Card của bạn bị di chuyển',
+      message:    `${req.user.name} đã di chuyển card "${card.title}"`,
+      link:       `/board/${boardId}`,
+      metadata:   { cardId: id, cardTitle: card.title, boardId, fromList: oldListId, toList: listId },
+    });
+  }
   res.status(200).json({ success: true, data: card });
 });
 
 // @desc    Update card
 // @route   PUT /api/cards/:id
 exports.updateCard = asyncHandler(async (req, res, next) => {
+  const oldCard = await Card.findById(req.params.id).select('assignees title board');
+  if (!oldCard) return next(new AppError('Card not found', 404));
   const card = await Card.findByIdAndUpdate(req.params.id, req.body, {
-    new: true,
-    runValidators: true,
+    new: true, runValidators: true,
   });
-
-  if (!card) return next(new AppError('Card not found', 404));
-
+  if (req.body.assignees) {
+    const oldIds = (oldCard.assignees || []).map((a) => a.toString());
+    const newIds = (req.body.assignees || []).map((a) => a.toString());
+    const addedIds   = newIds.filter((id) => !oldIds.includes(id));
+    const removedIds = oldIds.filter((id) => !newIds.includes(id));
+    const io = req.app?.get?.('io');
+    if (addedIds.length > 0) {
+      await notify(io, {
+        actor:      req.user._id,
+        recipients: addedIds,
+        type:       'member_added_card',
+        title:      'Bạn được giao một card',
+        message:    `${req.user.name} đã giao card "${card.title}" cho bạn`,
+        link:       `/board/${card.board}`,
+        metadata:   { cardId: card._id, cardTitle: card.title, boardId: card.board },
+      });
+    }
+    if (removedIds.length > 0) {
+      await notify(io, {
+        actor:      req.user._id,
+        recipients: removedIds,
+        type:       'member_removed_card',
+        title:      'Bạn bị bỏ khỏi một card',
+        message:    `${req.user.name} đã bỏ bạn khỏi card "${card.title}"`,
+        link:       `/board/${card.board}`,
+        metadata:   { cardId: card._id, cardTitle: card.title, boardId: card.board },
+      });
+    }
+  }
+  const hasContentUpdate = req.body.title || req.body.description || req.body.dueDate !== undefined;
+  if (hasContentUpdate && card.assignees?.length > 0) {
+    const io = req.app?.get?.('io');
+    await notify(io, {
+      actor:      req.user._id,
+      recipients: card.assignees.map((a) => a._id || a),
+      type:       'card_updated',
+      title:      'Card bạn phụ trách bị cập nhật',
+      message:    `${req.user.name} đã cập nhật card "${card.title}"`,
+      link:       `/board/${card.board}`,
+      metadata:   { cardId: card._id, cardTitle: card.title, boardId: card.board },
+    });
+  }
   res.status(200).json({ success: true, data: card });
 });
 
@@ -153,9 +196,7 @@ exports.getCardDetails = asyncHandler(async (req, res, next) => {
     .populate('list', 'name')
     .populate('assignees', 'name email avatar')
     .populate('comments.user', 'name email avatar');
-
   if (!card) return next(new AppError('Card not found', 404));
-
   res.status(200).json({ success: true, data: card });
 });
 
@@ -164,45 +205,42 @@ exports.getCardDetails = asyncHandler(async (req, res, next) => {
 exports.addComment = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
   const { content, boardId } = req.body;
-
   const card = await Card.findById(id);
   if (!card) return next(new AppError('Card not found', 404));
-
   await card.addComment(req.user._id, content);
-
   const io = req.app.get('io');
   io.to(`board:${boardId}`).emit('comment:added', {
-    cardId: id,
-    comment: card.comments[card.comments.length - 1],
+    cardId: id, comment: card.comments[card.comments.length - 1],
   });
-
+  if (card.assignees?.length > 0) {
+    await notify(io, {
+      actor:      req.user._id,
+      recipients: card.assignees.map((a) => a._id || a),
+      type:       'comment_added',
+      title:      'Bình luận mới trên card của bạn',
+      message:    `${req.user.name} đã bình luận: "${content.slice(0, 60)}${content.length > 60 ? '...' : ''}"`,
+      link:       `/board/${boardId}`,
+      metadata:   { cardId: id, cardTitle: card.title, boardId, comment: content.slice(0, 100) },
+    });
+  }
   res.status(200).json({ success: true, data: card.comments });
 });
 
 // @desc    Add checklist item
 // @route   POST /api/cards/:id/checklist
 exports.addChecklistItem = asyncHandler(async (req, res, next) => {
-  const { id } = req.params;
-  const { text } = req.body;
-
-  const card = await Card.findById(id);
+  const card = await Card.findById(req.params.id);
   if (!card) return next(new AppError('Card not found', 404));
-
-  await card.addChecklistItem(text);
-
+  await card.addChecklistItem(req.body.text);
   res.status(200).json({ success: true, data: card.checklist });
 });
 
 // @desc    Toggle checklist item
 // @route   PATCH /api/cards/:id/checklist/:itemId
 exports.toggleChecklistItem = asyncHandler(async (req, res, next) => {
-  const { id, itemId } = req.params;
-
-  const card = await Card.findById(id);
+  const card = await Card.findById(req.params.id);
   if (!card) return next(new AppError('Card not found', 404));
-
-  await card.toggleChecklistItem(itemId);
-
+  await card.toggleChecklistItem(req.params.itemId);
   res.status(200).json({ success: true, data: card.checklist });
 });
 
@@ -211,30 +249,18 @@ exports.toggleChecklistItem = asyncHandler(async (req, res, next) => {
 exports.moveChecklistItem = asyncHandler(async (req, res, next) => {
   const { id, itemId } = req.params;
   const { targetCardId } = req.body;
-
   const sourceCard = await Card.findById(id);
   if (!sourceCard) return next(new AppError('Source card not found', 404));
-
   await ensureBoardAccess(sourceCard.board, req.user);
-
   const checklistItem = sourceCard.checklist.id(itemId);
-  if (!checklistItem) {
-    return next(new AppError('Checklist item not found', 404));
-  }
-
+  if (!checklistItem) return next(new AppError('Checklist item not found', 404));
   const targetCard = await Card.findById(targetCardId);
   if (!targetCard) return next(new AppError('Target card not found', 404));
-
-  if (sourceCard._id.toString() === targetCard._id.toString()) {
+  if (sourceCard._id.toString() === targetCard._id.toString())
     return next(new AppError('Cannot move checklist item to the same card', 400));
-  }
-
-  if (sourceCard.board.toString() !== targetCard.board.toString()) {
+  if (sourceCard.board.toString() !== targetCard.board.toString())
     return next(new AppError('Checklist items can only be moved within the same board', 400));
-  }
-
   const movedItem = await sourceCard.moveChecklistItemToCard(itemId, targetCard);
-
   await Activity.log({
     actor: req.user._id,
     action: 'checklist_item_moved',
@@ -248,7 +274,6 @@ exports.moveChecklistItem = asyncHandler(async (req, res, next) => {
       itemText: checklistItem.text,
     },
   });
-
   res.status(200).json({
     success: true,
     data: {
@@ -264,12 +289,70 @@ exports.moveChecklistItem = asyncHandler(async (req, res, next) => {
 // @desc    Delete card
 // @route   DELETE /api/cards/:id
 exports.deleteCard = asyncHandler(async (req, res, next) => {
-  const { id } = req.params;
-  const card = await Card.findById(id);
+  const card = await Card.findById(req.params.id);
+  if (!card) return next(new AppError('Card not found', 404));
+  await Card.deleteOne({ _id: req.params.id });
+  res.status(200).json({ success: true, data: { id: req.params.id } });
+});
 
+// ─────────────────────────────────────────────────────────────
+// FILE ATTACHMENT
+// ─────────────────────────────────────────────────────────────
+
+// @desc    Upload attachment to card
+// @route   POST /api/cards/:id/attachments
+// @access  Private
+exports.addAttachment = [
+  upload.single('file'),
+  asyncHandler(async (req, res, next) => {
+    const card = await Card.findById(req.params.id);
+    if (!card) return next(new AppError('Card not found', 404));
+    if (!req.file) return next(new AppError('No file uploaded', 400));
+
+    const attachment = {
+      name:       req.file.originalname || req.file.public_id,
+      url:        req.file.secure_url || req.file.path,
+      type:       req.file.mimetype,
+      publicId:   req.file.public_id,
+      uploadedBy: req.user._id,
+    };
+
+    await card.addAttachment(attachment);
+
+    await Activity.log({
+      actor:      req.user._id,
+      action:     'attachment_added',
+      target:     card._id,
+      targetType: 'Card',
+      board:      card.board,
+      metadata:   { fileName: attachment.name, fileType: attachment.type },
+    });
+
+    res.status(201).json({ success: true, data: card.attachments });
+  }),
+];
+
+// @desc    Delete attachment from card
+// @route   DELETE /api/cards/:id/attachments/:attachmentId
+// @access  Private
+exports.deleteAttachment = asyncHandler(async (req, res, next) => {
+  const { id, attachmentId } = req.params;
+  const card = await Card.findById(id);
   if (!card) return next(new AppError('Card not found', 404));
 
-  await Card.deleteOne({ _id: id });
+  const attachment = card.attachments.id(attachmentId);
+  if (!attachment) return next(new AppError('Attachment not found', 404));
 
-  res.status(200).json({ success: true, data: { id } });
+  // Xoá file khỏi Cloudinary nếu có publicId
+  if (attachment.publicId) {
+    try {
+      await cloudinary.uploader.destroy(attachment.publicId);
+    } catch (err) {
+      console.error('Cloudinary delete error:', err.message);
+    }
+  }
+
+  await card.removeAttachment(attachmentId);
+
+  res.status(200).json({ success: true, data: card.attachments });
 });

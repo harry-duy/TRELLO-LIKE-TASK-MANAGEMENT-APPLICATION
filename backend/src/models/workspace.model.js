@@ -27,7 +27,7 @@ const workspaceSchema = new mongoose.Schema(
         },
         role: {
           type: String,
-          enum: ['admin', 'member'],
+          enum: ['admin', 'member', 'staff'],  // ← THÊM 'staff'
           default: 'member',
         },
         addedAt: {
