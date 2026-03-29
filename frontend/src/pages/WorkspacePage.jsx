@@ -310,9 +310,11 @@ export default function WorkspacePage() {
           </div>
 
           <div className="space-y-3">
-            <button className="btn btn-primary w-full justify-center" onClick={() => setIsCreatingBoard(true)}>
-              {l.createBoard}
-            </button>
+            {canCreateBoard && (
+              <button className="btn btn-primary w-full justify-center" onClick={() => setIsCreatingBoard(true)}>
+                {l.createBoard}
+              </button>
+            )}
             <button className="btn btn-secondary w-full justify-center" onClick={() => navigate('/dashboard')}>
               {l.backDashboard}
             </button>

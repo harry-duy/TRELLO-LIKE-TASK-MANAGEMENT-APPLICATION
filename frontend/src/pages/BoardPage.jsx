@@ -352,9 +352,26 @@ export default function BoardPage() {
               📋 {showActivity ? l.hideActivity : l.showActivity}
             </button>
             {canManageBoard && (
-              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setIsEditingBoard(true)}>
-                {l.editBoard}
-              </button>
+              <>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setIsEditingBoard(true)}>
+                  {l.editBoard}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={async () => {
+                    if (!window.confirm(l.deleteBoard)) return;
+                    try {
+                      await boardService.deleteBoard(board._id);
+                      navigate(workspaceId ? `/workspace/${workspaceId}` : '/dashboard');
+                    } catch (error) {
+                      toast.error(error?.message || l.updateError);
+                    }
+                  }}
+                >
+                  {l.deleteBoard}
+                </button>
+              </>
             )}
             {workspaceId && (
               <Link to={`/workspace/${workspaceId}`} className="btn btn-secondary btn-sm">
