@@ -141,6 +141,7 @@ cardSchema.index({ dueDate: 1 });
 cardSchema.index({ labels: 1 });
 cardSchema.index({ title: 'text', description: 'text' });
 cardSchema.index({ isArchived: 1, list: 1 });
+cardSchema.index({ board: 1, isArchived: 1 });
 
 // Virtual: Check if card is overdue
 cardSchema.virtual('isOverdue').get(function () {
@@ -202,8 +203,8 @@ cardSchema.methods.updateComment = function (commentId, content) {
 cardSchema.methods.deleteComment = function (commentId) {
   const comment = this.comments.id(commentId);
   if (!comment) throw new Error('Comment not found');
-  
-  comment.remove();
+
+  this.comments.pull({ _id: commentId });
   return this.save();
 };
 
@@ -255,8 +256,8 @@ cardSchema.methods.addAttachment = function (attachment) {
 cardSchema.methods.removeAttachment = function (attachmentId) {
   const attachment = this.attachments.id(attachmentId);
   if (!attachment) throw new Error('Attachment not found');
-  
-  attachment.remove();
+
+  this.attachments.pull({ _id: attachmentId });
   return this.save();
 };
 

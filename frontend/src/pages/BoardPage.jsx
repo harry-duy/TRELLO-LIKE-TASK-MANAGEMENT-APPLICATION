@@ -302,13 +302,68 @@ export default function BoardPage() {
   }, [user, board, workspace]);
 
   if (!authReady || isLoading) return (
-    <div className="flex items-center gap-2 text-emerald-100/70"><div className="spinner border-primary-600" />{l.loading}</div>
-  );
-  if (isError) return (
-    <div className="card border border-white/10 bg-white/10 p-4">
-      <p className="text-sm text-red-300">{error?.message ? `${l.loadError}: ${error.message}` : l.loadError}</p>
+    <div className="space-y-5 animate-pulse">
+      {/* Header skeleton */}
+      <div className="rounded-[24px] border border-white/10 bg-white/[0.04] px-5 py-4">
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:16 }}>
+          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+            <div style={{ width:120, height:14, borderRadius:8, background:'rgba(255,255,255,.08)' }} />
+            <div style={{ width:240, height:28, borderRadius:10, background:'rgba(255,255,255,.1)' }} />
+            <div style={{ width:180, height:13, borderRadius:8, background:'rgba(255,255,255,.06)' }} />
+          </div>
+          <div style={{ display:'flex', gap:8 }}>
+            {[80, 100, 80].map((w, i) => (
+              <div key={i} style={{ width:w, height:32, borderRadius:10, background:'rgba(255,255,255,.07)' }} />
+            ))}
+          </div>
+        </div>
+      </div>
+      {/* Board canvas skeleton */}
+      <div className="rounded-[24px] border border-white/10 bg-white/[0.03] p-4" style={{ height:480 }}>
+        <div style={{ display:'flex', gap:12, height:'100%' }}>
+          {[1,2,3].map(i => (
+            <div key={i} style={{ width:280, flexShrink:0, borderRadius:14, background:'rgba(255,255,255,.05)', padding:12, display:'flex', flexDirection:'column', gap:10 }}>
+              <div style={{ width:120, height:18, borderRadius:8, background:'rgba(255,255,255,.1)' }} />
+              {[60,80,55].map((h, j) => (
+                <div key={j} style={{ borderRadius:10, background:'rgba(255,255,255,.07)', height:h }} />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
+
+  if (isError) {
+    const is403 = error?.response?.status === 403 || error?.status === 403 || error?.message?.includes('403');
+    const is404 = error?.response?.status === 404 || error?.status === 404;
+    return (
+      <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:400, gap:16, textAlign:'center' }}>
+        <div style={{ fontSize:56 }}>{is403 ? '🔒' : '🔍'}</div>
+        <h2 style={{ fontSize:22, fontWeight:700, color:'white', margin:0 }}>
+          {is403
+            ? (lang === 'vi' ? 'Bạn không có quyền truy cập board này' : 'You do not have access to this board')
+            : is404
+              ? (lang === 'vi' ? 'Không tìm thấy board' : 'Board not found')
+              : l.loadError}
+        </h2>
+        <p style={{ fontSize:14, color:'rgba(255,255,255,.45)', maxWidth:360, margin:0 }}>
+          {is403
+            ? (lang === 'vi' ? 'Board này là riêng tư hoặc bạn chưa được mời tham gia.' : 'This board is private or you have not been invited.')
+            : is404
+              ? (lang === 'vi' ? 'Board đã bị xóa hoặc link không đúng.' : 'This board may have been deleted or the link is incorrect.')
+              : error?.message || ''}
+        </p>
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={() => navigate('/dashboard')}
+        >
+          {lang === 'vi' ? '← Về Dashboard' : '← Back to Dashboard'}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">

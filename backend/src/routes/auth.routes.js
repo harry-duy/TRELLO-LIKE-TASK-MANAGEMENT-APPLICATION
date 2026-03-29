@@ -2,9 +2,34 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
+const rateLimit = require('express-rate-limit');
 const passport = require('../config/passport');
 const authController = require('../controllers/auth.controller');
 const { protect } = require('../middleware/auth.middleware');
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 phút
+  max: 10,
+  message: { success: false, message: 'Too many login attempts, please try again after 15 minutes' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 giờ
+  max: 5,
+  message: { success: false, message: 'Too many accounts created from this IP, please try again after an hour' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const passwordLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 giờ
+  max: 5,
+  message: { success: false, message: 'Too many password reset requests, please try again after an hour' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 const hasGoogleOAuthConfig =
   Boolean(process.env.GOOGLE_CLIENT_ID) &&
@@ -44,10 +69,10 @@ const handleOAuthSuccess = async (req, res, next) => {
 };
 
 // ── Email/Password ──────────────────────────────────────────────────────────────
-router.post('/register', authController.register);
-router.post('/login', authController.login);
-router.post('/forgot-password', authController.forgotPassword);
-router.post('/reset-password/:token', authController.resetPassword);
+router.post('/register', registerLimiter, authController.register);
+router.post('/login', loginLimiter, authController.login);
+router.post('/forgot-password', passwordLimiter, authController.forgotPassword);
+router.post('/reset-password/:token', passwordLimiter, authController.resetPassword);
 router.post('/refresh-token', authController.refreshToken);
 router.post('/logout', protect, authController.logout);
 router.get('/me', protect, authController.getMe);

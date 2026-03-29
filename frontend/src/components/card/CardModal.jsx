@@ -85,6 +85,10 @@ export default function CardModal({ cardId, boardId, onClose }) {
   const [activeTab,       setActiveTab]       = useState('comments');
   const [showCoverPicker, setShowCoverPicker] = useState(false);
 
+  // Comment edit state
+  const [editingCommentId,   setEditingCommentId]   = useState(null);
+  const [editingCommentText, setEditingCommentText] = useState('');
+
   // Comment with @mention
   const [commentText,   setCommentText]   = useState('');
   const [mentionQuery,  setMentionQuery]  = useState('');
@@ -252,7 +256,7 @@ export default function CardModal({ cardId, boardId, onClose }) {
   });
 
   const aiChecklistMutation = useMutation({
-    mutationFn: () => aiService.getChecklistSuggestions({ title: form.title, description: form.description }),
+    mutationFn: () => aiService.getChecklistSuggestions({ title: form.title, description: form.description, language: lang }),
     onSuccess: res => { setAiChecklist(res?.checklist || []); toast.success(t('aiSuggestedCount', { count: res?.checklist?.length || 0 })); },
     onError:   err => toast.error(err?.message || t('aiChecklistFetchError')),
   });
@@ -286,6 +290,22 @@ export default function CardModal({ cardId, boardId, onClose }) {
         ? (lang === 'vi' ? 'Đang theo dõi card' : 'Watching card')
         : (lang === 'vi' ? 'Đã bỏ theo dõi' : 'Unwatched card'));
     },
+  });
+
+  const updateCommentMutation = useMutation({
+    mutationFn: ({ commentId, content }) => cardService.updateComment(cardId, commentId, content),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['card', cardId]);
+      setEditingCommentId(null);
+      setEditingCommentText('');
+    },
+    onError: (err) => toast.error(err?.message || (lang === 'vi' ? 'Không thể sửa bình luận' : 'Could not edit comment')),
+  });
+
+  const deleteCommentMutation = useMutation({
+    mutationFn: (commentId) => cardService.deleteComment(cardId, commentId),
+    onSuccess: () => queryClient.invalidateQueries(['card', cardId]),
+    onError: (err) => toast.error(err?.message || (lang === 'vi' ? 'Không thể xoá bình luận' : 'Could not delete comment')),
   });
 
   const coverMutation = useMutation({
@@ -656,20 +676,80 @@ export default function CardModal({ cardId, boardId, onClose }) {
             {activeTab === 'comments' && (
               <>
                 <div className="space-y-3 mb-4">
-                  {(card?.comments || []).map(comment => (
-                    <div key={comment._id} className="flex gap-3">
-                      <div className="w-8 h-8 rounded-full bg-blue-500 shrink-0 flex items-center justify-center text-white text-xs font-bold">
-                        {(comment.user?.name || '?')[0].toUpperCase()}
-                      </div>
-                      <div className="min-w-0 flex-1 rounded-xl bg-white/10 p-3">
-                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
-                          <p className="text-sm font-semibold text-white">{comment.user?.name}</p>
-                          <span style={{ fontSize:10, color:'rgba(255,255,255,.3)' }}>{timeAgo(comment.createdAt, lang)}</span>
+                  {(card?.comments || []).map(comment => {
+                    const isOwn = comment.user?._id?.toString() === me?._id?.toString()
+                      || comment.user?.toString() === me?._id?.toString();
+                    const isEditing = editingCommentId === comment._id;
+                    return (
+                      <div key={comment._id} className="flex gap-3">
+                        <div style={{ width:32, height:32, borderRadius:'50%', background:`hsl(${((comment.user?.name||'?').charCodeAt(0)*17)%360},60%,42%)`, display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontSize:12, fontWeight:700, flexShrink:0 }}>
+                          {(comment.user?.name || '?')[0].toUpperCase()}
                         </div>
-                        <CommentText content={comment.content} />
+                        <div className="min-w-0 flex-1 rounded-xl bg-white/10 p-3">
+                          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
+                            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                              <p className="text-sm font-semibold text-white" style={{ margin:0 }}>{comment.user?.name}</p>
+                              <span style={{ fontSize:10, color:'rgba(255,255,255,.3)' }}>{timeAgo(comment.createdAt, lang)}</span>
+                              {comment.updatedAt && comment.updatedAt !== comment.createdAt && (
+                                <span style={{ fontSize:10, color:'rgba(255,255,255,.25)', fontStyle:'italic' }}>
+                                  {lang === 'vi' ? '(đã sửa)' : '(edited)'}
+                                </span>
+                              )}
+                            </div>
+                            {isOwn && !isEditing && (
+                              <div style={{ display:'flex', gap:4, flexShrink:0 }}>
+                                <button type="button"
+                                  onClick={() => { setEditingCommentId(comment._id); setEditingCommentText(comment.content); }}
+                                  style={{ fontSize:10, color:'rgba(255,255,255,.4)', background:'none', border:'none', cursor:'pointer', padding:'2px 6px', borderRadius:6, transition:'color .15s' }}
+                                  onMouseEnter={e => e.target.style.color='rgba(255,255,255,.8)'}
+                                  onMouseLeave={e => e.target.style.color='rgba(255,255,255,.4)'}>
+                                  {lang === 'vi' ? 'Sửa' : 'Edit'}
+                                </button>
+                                <button type="button"
+                                  onClick={() => {
+                                    if (!window.confirm(lang === 'vi' ? 'Xoá bình luận này?' : 'Delete this comment?')) return;
+                                    deleteCommentMutation.mutate(comment._id);
+                                  }}
+                                  style={{ fontSize:10, color:'rgba(248,113,113,.5)', background:'none', border:'none', cursor:'pointer', padding:'2px 6px', borderRadius:6, transition:'color .15s' }}
+                                  onMouseEnter={e => e.target.style.color='#f87171'}
+                                  onMouseLeave={e => e.target.style.color='rgba(248,113,113,.5)'}>
+                                  {lang === 'vi' ? 'Xoá' : 'Delete'}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                          {isEditing ? (
+                            <div style={{ marginTop:8 }}>
+                              <textarea
+                                className="input w-full"
+                                rows={2}
+                                value={editingCommentText}
+                                onChange={e => setEditingCommentText(e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (editingCommentText.trim()) updateCommentMutation.mutate({ commentId: comment._id, content: editingCommentText }); }
+                                  if (e.key === 'Escape') { setEditingCommentId(null); setEditingCommentText(''); }
+                                }}
+                                autoFocus
+                              />
+                              <div style={{ display:'flex', gap:6, marginTop:6 }}>
+                                <button type="button" className="btn btn-primary btn-sm"
+                                  disabled={!editingCommentText.trim() || updateCommentMutation.isPending}
+                                  onClick={() => updateCommentMutation.mutate({ commentId: comment._id, content: editingCommentText })}>
+                                  {lang === 'vi' ? 'Lưu' : 'Save'}
+                                </button>
+                                <button type="button" className="btn btn-secondary btn-sm"
+                                  onClick={() => { setEditingCommentId(null); setEditingCommentText(''); }}>
+                                  {lang === 'vi' ? 'Huỷ' : 'Cancel'}
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <CommentText content={comment.content} />
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {/* Comment input with @mention */}

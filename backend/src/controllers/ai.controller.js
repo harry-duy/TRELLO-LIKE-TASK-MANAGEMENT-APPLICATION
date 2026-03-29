@@ -98,9 +98,10 @@ exports.searchCardsByNaturalLanguage = asyncHandler(async (req, res, next) => {
   };
 
   if (filters.keyword) {
+    const escaped = filters.keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     mongoQuery.$or = [
-      { title: { $regex: filters.keyword, $options: 'i' } },
-      { description: { $regex: filters.keyword, $options: 'i' } },
+      { title: { $regex: escaped, $options: 'i' } },
+      { description: { $regex: escaped, $options: 'i' } },
     ];
   }
 
@@ -143,7 +144,7 @@ exports.searchCardsByNaturalLanguage = asyncHandler(async (req, res, next) => {
 });
 
 exports.suggestChecklist = asyncHandler(async (req, res, next) => {
-  const { title, description } = req.body;
+  const { title, description, language } = req.body;
 
   if (!title?.trim()) {
     return next(new AppError('title is required', 400));
@@ -152,6 +153,7 @@ exports.suggestChecklist = asyncHandler(async (req, res, next) => {
   const result = await generateChecklist({
     title: title.trim(),
     description: description || '',
+    language: language || 'vi',
   });
 
   await trackUsage({
@@ -174,7 +176,9 @@ exports.suggestChecklist = asyncHandler(async (req, res, next) => {
 });
 
 exports.chatAssistant = asyncHandler(async (req, res, next) => {
-  const { message, boardId } = req.body;
+  const { message, boardId, language } = req.body;
+  const lang = language === 'en' ? 'en' : 'vi';
+  const isEn = lang === 'en';
 
   if (!message?.trim()) {
     return next(new AppError('message is required', 400));
@@ -244,8 +248,12 @@ exports.chatAssistant = asyncHandler(async (req, res, next) => {
         const result = {
           status: 'fallback',
           answer: createBoardIntent.workspaceName
-            ? `Mình không tìm thấy workspace "${createBoardIntent.workspaceName}" trong phạm vi bạn truy cập được.`
-            : 'Bạn chưa có workspace phù hợp để tạo board. Hãy tạo workspace trước nhé.',
+            ? (isEn
+                ? `I could not find workspace "${createBoardIntent.workspaceName}" within your accessible workspaces.`
+                : `Mình không tìm thấy workspace "${createBoardIntent.workspaceName}" trong phạm vi bạn truy cập được.`)
+            : (isEn
+                ? 'You do not have a suitable workspace to create a board. Please create a workspace first.'
+                : 'Bạn chưa có workspace phù hợp để tạo board. Hãy tạo workspace trước nhé.'),
         };
 
         await trackUsage({
@@ -272,7 +280,9 @@ exports.chatAssistant = asyncHandler(async (req, res, next) => {
 
       const result = {
         status: 'success',
-        answer: `Đã tạo board "${newBoard.name}" trong workspace "${targetWorkspace.name}". Mình cũng tạo sẵn list "${todoList.name}". Bạn vào /board/${newBoard._id} để bắt đầu.`,
+        answer: isEn
+          ? `Board "${newBoard.name}" created in workspace "${targetWorkspace.name}". I also created a "${todoList.name}" list. Go to /board/${newBoard._id} to get started.`
+          : `Đã tạo board "${newBoard.name}" trong workspace "${targetWorkspace.name}". Mình cũng tạo sẵn list "${todoList.name}". Bạn vào /board/${newBoard._id} để bắt đầu.`,
       };
 
       await trackUsage({
@@ -321,7 +331,9 @@ exports.chatAssistant = asyncHandler(async (req, res, next) => {
       if (!targetBoard) {
         const result = {
           status: 'fallback',
-          answer: 'Mình không tìm được board phù hợp để tạo card. Bạn mở board trước hoặc chỉ rõ tên board trong lệnh.',
+          answer: isEn
+            ? 'I could not find a suitable board to create the card. Open a board first or specify the board name in your command.'
+            : 'Mình không tìm được board phù hợp để tạo card. Bạn mở board trước hoặc chỉ rõ tên board trong lệnh.',
         };
 
         await trackUsage({
@@ -365,7 +377,9 @@ exports.chatAssistant = asyncHandler(async (req, res, next) => {
 
       const result = {
         status: 'success',
-        answer: `Đã tạo card "${newCard.title}" trong board "${targetBoard.name}" (list "${targetList.name}").`,
+        answer: isEn
+          ? `Card "${newCard.title}" created in board "${targetBoard.name}" (list "${targetList.name}").`
+          : `Đã tạo card "${newCard.title}" trong board "${targetBoard.name}" (list "${targetList.name}").`,
       };
 
       await trackUsage({
@@ -417,11 +431,13 @@ exports.chatAssistant = asyncHandler(async (req, res, next) => {
         ? boards
             .map((boardItem, index) => `${index + 1}. ${boardItem.name} (/board/${boardItem._id})`)
             .join('\n')
-        : 'Hiện chưa có board nào đang mở.';
+        : (isEn ? 'No open boards found.' : 'Hiện chưa có board nào đang mở.');
 
       const result = {
         status: 'success',
-        answer: `Đây là các board bạn có thể truy cập:\n${boardLines}\n\nBạn mở 1 board rồi nhắn “tóm tắt board này” để mình phân tích chi tiết.`,
+        answer: isEn
+          ? `Here are the boards you can access:\n${boardLines}\n\nOpen a board and send “summarize this board” for a detailed analysis.`
+          : `Đây là các board bạn có thể truy cập:\n${boardLines}\n\nBạn mở 1 board rồi nhắn “tóm tắt board này” để mình phân tích chi tiết.`,
       };
 
       await trackUsage({
@@ -467,11 +483,13 @@ exports.chatAssistant = asyncHandler(async (req, res, next) => {
                 `${index + 1}. ${cardItem.title} | Board: ${cardItem.board?.name || 'N/A'} | List: ${cardItem.list?.name || 'N/A'} | Due: ${new Date(cardItem.dueDate).toLocaleDateString()}`
             )
             .join('\n')
-        : 'Không có card quá hạn trong phạm vi bạn có thể truy cập.';
+        : (isEn ? 'No overdue cards within your accessible scope.' : 'Không có card quá hạn trong phạm vi bạn có thể truy cập.');
 
       const result = {
         status: 'success',
-        answer: `Danh sách ưu tiên (card quá hạn):\n${priorityLines}`,
+        answer: isEn
+          ? `Priority list (overdue cards):\n${priorityLines}`
+          : `Danh sách ưu tiên (card quá hạn):\n${priorityLines}`,
       };
 
       await trackUsage({
@@ -509,7 +527,7 @@ exports.chatAssistant = asyncHandler(async (req, res, next) => {
 
     boardContext = {
       id: null,
-      name: 'Các board của bạn',
+      name: isEn ? 'Your boards' : 'Các board của bạn',
       cards: recentCards.map((cardItem) => ({
         id: cardItem._id,
         title: `[${cardItem.board?.name || 'Board'}] ${cardItem.title}`,
@@ -521,6 +539,7 @@ exports.chatAssistant = asyncHandler(async (req, res, next) => {
   const result = await generateAssistantReply({
     message: message.trim(),
     boardContext,
+    language: lang,
   });
 
   await trackUsage({

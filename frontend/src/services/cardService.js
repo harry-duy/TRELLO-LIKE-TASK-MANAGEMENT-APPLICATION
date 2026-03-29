@@ -31,6 +31,16 @@ const cardService = {
     return response?.data ?? response;
   },
 
+  updateComment: async (cardId, commentId, content) => {
+    const response = await apiClient.put(`/cards/${cardId}/comments/${commentId}`, { content });
+    return response?.data ?? response;
+  },
+
+  deleteComment: async (cardId, commentId) => {
+    const response = await apiClient.delete(`/cards/${cardId}/comments/${commentId}`);
+    return response?.data ?? response;
+  },
+
   addChecklistItem: async (cardId, text) => {
     const response = await apiClient.post(`/cards/${cardId}/checklist`, { text });
     return response?.data ?? response;

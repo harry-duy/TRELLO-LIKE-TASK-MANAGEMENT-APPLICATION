@@ -529,6 +529,7 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
               <ListColumn
                 key={list._id}
                 list={list}
+                allLists={board?.lists || []}
                 columnWidth={columnWidth}
                 onCardClick={id => setSelectedCardId(id)}
                 onCardAdded={() => queryClient.invalidateQueries(['board', boardId])}

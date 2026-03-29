@@ -40,7 +40,7 @@ const notify = async (io, { actor, recipients, type, title, message, link = null
       isRead: false,
     }));
 
-    const created = await Notification.create_many(docs);
+    const created = await Notification.insertMany(docs);
 
     // Emit real-time qua socket nếu có io
     if (io) {

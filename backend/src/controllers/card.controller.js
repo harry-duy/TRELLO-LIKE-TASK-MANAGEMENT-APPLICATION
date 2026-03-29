@@ -83,8 +83,10 @@ exports.searchCards = asyncHandler(async (req, res, next) => {
 
 // @desc    Create card
 // @route   POST /api/cards
-exports.createCard = asyncHandler(async (req, res) => {
+exports.createCard = asyncHandler(async (req, res, next) => {
   const { title, listId, boardId } = req.body;
+  if (!boardId) return next(new AppError('boardId is required', 400));
+  await ensureBoardAccess(boardId, req.user);
   const card = await Card.create({
     title,
     list: listId,
@@ -108,7 +110,7 @@ exports.moveCard = asyncHandler(async (req, res, next) => {
   const { listId, position, boardId } = req.body;
   const card = await Card.findById(id);
   if (!card) return next(new AppError('Card not found', 404));
-  if (boardId) await ensureBoardAccess(boardId, req.user);
+  await ensureBoardAccess(card.board, req.user);
   const oldListId = card.list;
   await card.moveToList(listId, position);
   await Activity.log({
@@ -142,12 +144,17 @@ exports.moveCard = asyncHandler(async (req, res, next) => {
 exports.updateCard = asyncHandler(async (req, res, next) => {
   const card = await Card.findById(req.params.id);
   if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
 
   const oldIsCompleted = card.isCompleted;
   const oldAssignees = card.assignees ? [...card.assignees] : [];
 
-  Object.keys(req.body).forEach((key) => {
-    card[key] = req.body[key];
+  const ALLOWED_FIELDS = [
+    'title', 'description', 'dueDate', 'isCompleted',
+    'labels', 'assignees', 'isArchived', 'cover', 'watchers',
+  ];
+  ALLOWED_FIELDS.forEach((key) => {
+    if (req.body[key] !== undefined) card[key] = req.body[key];
   });
   await card.save();
 
@@ -210,6 +217,7 @@ exports.getCardDetails = asyncHandler(async (req, res, next) => {
     .populate('assignees', 'name email avatar')
     .populate('comments.user', 'name email avatar');
   if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
   res.status(200).json({ success: true, data: card });
 });
 
@@ -220,6 +228,7 @@ exports.addComment = asyncHandler(async (req, res, next) => {
   const { content, boardId } = req.body;
   const card = await Card.findById(id);
   if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
   await card.addComment(req.user._id, content);
   const io = req.app.get('io');
   io.to(`board:${boardId}`).emit('comment:added', {
@@ -239,11 +248,55 @@ exports.addComment = asyncHandler(async (req, res, next) => {
   res.status(200).json({ success: true, data: card.comments });
 });
 
+// @desc    Update comment
+// @route   PUT /api/cards/:id/comments/:commentId
+exports.updateComment = asyncHandler(async (req, res, next) => {
+  const { content } = req.body;
+  if (!content?.trim()) return next(new AppError('Content is required', 400));
+
+  const card = await Card.findById(req.params.id);
+  if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
+
+  const comment = card.comments.id(req.params.commentId);
+  if (!comment) return next(new AppError('Comment not found', 404));
+  if (comment.user.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+    return next(new AppError('You can only edit your own comments', 403));
+  }
+
+  comment.content   = content.trim();
+  comment.updatedAt = new Date();
+  await card.save();
+
+  const updated = await Card.findById(req.params.id).populate('comments.user', 'name email avatar');
+  res.status(200).json({ success: true, data: updated.comments });
+});
+
+// @desc    Delete comment
+// @route   DELETE /api/cards/:id/comments/:commentId
+exports.deleteComment = asyncHandler(async (req, res, next) => {
+  const card = await Card.findById(req.params.id);
+  if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
+
+  const comment = card.comments.id(req.params.commentId);
+  if (!comment) return next(new AppError('Comment not found', 404));
+  if (comment.user.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+    return next(new AppError('You can only delete your own comments', 403));
+  }
+
+  card.comments.pull({ _id: req.params.commentId });
+  await card.save();
+
+  res.status(200).json({ success: true, data: { id: req.params.commentId } });
+});
+
 // @desc    Add checklist item
 // @route   POST /api/cards/:id/checklist
 exports.addChecklistItem = asyncHandler(async (req, res, next) => {
   const card = await Card.findById(req.params.id);
   if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
   await card.addChecklistItem(req.body.text);
   res.status(200).json({ success: true, data: card.checklist });
 });
@@ -253,6 +306,7 @@ exports.addChecklistItem = asyncHandler(async (req, res, next) => {
 exports.toggleChecklistItem = asyncHandler(async (req, res, next) => {
   const card = await Card.findById(req.params.id);
   if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
   await card.toggleChecklistItem(req.params.itemId);
   res.status(200).json({ success: true, data: card.checklist });
 });
@@ -319,6 +373,7 @@ exports.getArchivedCards = asyncHandler(async (req, res, next) => {
 exports.restoreCard = asyncHandler(async (req, res, next) => {
   const card = await Card.findById(req.params.id);
   if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
   if (!card.isArchived) return next(new AppError('Card is not archived', 400));
 
   card.isArchived = false;
@@ -340,6 +395,7 @@ exports.restoreCard = asyncHandler(async (req, res, next) => {
 exports.deleteCard = asyncHandler(async (req, res, next) => {
   const card = await Card.findById(req.params.id);
   if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
   if (!card.isArchived) return next(new AppError('Card must be archived before it can be deleted', 400));
   await Card.deleteOne({ _id: req.params.id });
   res.status(200).json({ success: true, data: { id: req.params.id } });
@@ -350,6 +406,7 @@ exports.deleteCard = asyncHandler(async (req, res, next) => {
 exports.duplicateCard = asyncHandler(async (req, res, next) => {
   const source = await Card.findById(req.params.id);
   if (!source) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(source.board, req.user);
 
   const count = await Card.countDocuments({ list: source.list, isArchived: false });
   const newCard = await Card.create({
@@ -380,6 +437,7 @@ exports.duplicateCard = asyncHandler(async (req, res, next) => {
 exports.toggleWatcher = asyncHandler(async (req, res, next) => {
   const card = await Card.findById(req.params.id);
   if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
 
   const userId = req.user._id.toString();
   const idx = (card.watchers || []).findIndex(w => w.toString() === userId);
@@ -401,6 +459,7 @@ exports.toggleWatcher = asyncHandler(async (req, res, next) => {
 exports.getCardActivity = asyncHandler(async (req, res, next) => {
   const card = await Card.findById(req.params.id).select('board');
   if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
 
   const activities = await Activity.find({ target: req.params.id, targetType: 'Card' })
     .populate('actor', 'name email avatar')
@@ -422,6 +481,7 @@ exports.addAttachment = [
   asyncHandler(async (req, res, next) => {
     const card = await Card.findById(req.params.id);
     if (!card) return next(new AppError('Card not found', 404));
+    await ensureBoardAccess(card.board, req.user);
     if (!req.file) return next(new AppError('No file uploaded', 400));
 
     const attachment = {
@@ -454,6 +514,7 @@ exports.deleteAttachment = asyncHandler(async (req, res, next) => {
   const { id, attachmentId } = req.params;
   const card = await Card.findById(id);
   if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
 
   const attachment = card.attachments.id(attachmentId);
   if (!attachment) return next(new AppError('Attachment not found', 404));
