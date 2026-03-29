@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import boardService from '@services/boardService';
 import { useUiStore } from '@store/uiStore';
 import { useAuthStore } from '@store/authStore';
@@ -251,30 +252,27 @@ function BoardEditModal({ board, l, onClose, onSaved }) {
 export default function BoardPage() {
   const { boardId }   = useParams();
   const navigate      = useNavigate();
+  const queryClient   = useQueryClient();
   const lang          = useUiStore(s => s.language) || 'vi';
   const l             = L[lang] || L.vi;
   const user          = useAuthStore(s => s.user);
-  const [state,          setState]          = useState({ status: 'loading', board: null, error: null });
+  const authLoading    = useAuthStore(s => s.isLoading);
+  const accessToken    = useAuthStore(s => s.accessToken);
   const [isEditingBoard, setIsEditingBoard] = useState(false);
   const [showActivity,   setShowActivity]   = useState(false);
+  const authReady = !authLoading && !!accessToken;
 
-  useEffect(() => {
-    let mounted = true;
-    setState({ status: 'loading', board: null, error: null });
-    boardService.getBoardDetails(boardId)
-      .then(response => {
-        if (!mounted) return;
-        const board = response?.data || response;
-        setState({ status: 'ready', board, error: null });
-      })
-      .catch(error => {
-        if (!mounted) return;
-        setState({ status: 'error', board: null, error });
-      });
-    return () => { mounted = false; };
-  }, [boardId]);
-
-  const board       = state.board;
+  const {
+    data: boardRaw,
+    isLoading,
+    isError,
+    error,
+  } = useQuery({
+    queryKey: ['board', boardId],
+    queryFn: () => boardService.getBoardDetails(boardId),
+    enabled: !!boardId && authReady,
+  });
+  const board       = boardRaw?.data ?? boardRaw;
   const workspace   = board?.workspace;
   const workspaceId = getId(workspace);
   const accent      = board?.background || '#0f766e';
@@ -303,12 +301,12 @@ export default function BoardPage() {
     return ['admin', 'staff'].includes(member?.role);
   }, [user, board, workspace]);
 
-  if (state.status === 'loading') return (
+  if (!authReady || isLoading) return (
     <div className="flex items-center gap-2 text-emerald-100/70"><div className="spinner border-primary-600" />{l.loading}</div>
   );
-  if (state.status === 'error') return (
+  if (isError) return (
     <div className="card border border-white/10 bg-white/10 p-4">
-      <p className="text-sm text-red-300">{state.error?.message ? `${l.loadError}: ${state.error.message}` : l.loadError}</p>
+      <p className="text-sm text-red-300">{error?.message ? `${l.loadError}: ${error.message}` : l.loadError}</p>
     </div>
   );
 
@@ -396,7 +394,14 @@ export default function BoardPage() {
         <BoardEditModal
           board={board} l={l}
           onClose={() => setIsEditingBoard(false)}
-          onSaved={(nextBoard) => setState(prev => ({ ...prev, board: { ...prev.board, ...nextBoard } }))}
+          onSaved={(nextBoard) => {
+            queryClient.setQueryData(['board', boardId], (prev) => {
+              const currentBoard = prev?.data ?? prev;
+              if (!currentBoard) return prev;
+              const mergedBoard = { ...currentBoard, ...nextBoard };
+              return prev?.data ? { ...prev, data: mergedBoard } : mergedBoard;
+            });
+          }}
         />
       )}
     </div>

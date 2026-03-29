@@ -99,6 +99,7 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
   const queryClient = useQueryClient();
   const lang = useUiStore(s => s.language) || 'vi';
   const l    = L[lang] || L.vi;
+  const authReady = useAuthStore(s => !s.isLoading && !!s.accessToken);
 
   const [selectedCardId, setSelectedCardId] = useState(null);
   const [activeCard,     setActiveCard]     = useState(null);
@@ -126,7 +127,7 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
   const { data: boardRaw, isLoading, isError } = useQuery({
     queryKey: ['board', boardId],
     queryFn:  () => boardService.getBoardDetails(boardId),
-    enabled:  !!boardId,
+    enabled:  !!boardId && authReady,
   });
   const board = boardRaw?.data ?? boardRaw;
 
@@ -141,7 +142,7 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
 
   /* ─── Socket ─── */
   useEffect(() => {
-    if (!boardId) return;
+    if (!boardId || !authReady) return;
     initializeSocket();
     joinBoard(boardId);
     const u1 = onCardMoved(() => queryClient.invalidateQueries(['board', boardId]));
@@ -149,7 +150,7 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
       if (selectedCardId === data.cardId) queryClient.invalidateQueries(['card', data.cardId]);
     });
     return () => { leaveBoard(boardId); u1?.(); u2?.(); };
-  }, [boardId, queryClient, selectedCardId]);
+  }, [authReady, boardId, queryClient, selectedCardId]);
 
   /* ─── DnD ─── */
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
