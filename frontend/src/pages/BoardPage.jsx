@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import boardService from '@services/boardService';
 import { useUiStore } from '@store/uiStore';
 import { useAuthStore } from '@store/authStore';
@@ -15,6 +15,7 @@ const L = {
     workspaceFallback: 'Workspace',
     openWorkspace: 'Về workspace',
     editBoard: 'Chỉnh sửa board',
+    deleteBoard: 'Xóa board',
     save: 'Lưu', cancel: 'Huỷ',
     boardName: 'Tên board', boardDescription: 'Mô tả', boardColor: 'Màu nền',
     updateSuccess: 'Đã cập nhật board', updateError: 'Không thể cập nhật board',
@@ -30,7 +31,7 @@ const L = {
     boardFallback: 'Board',
     workspaceFallback: 'Workspace',
     openWorkspace: 'Back to workspace',
-    editBoard: 'Edit board', save: 'Save', cancel: 'Cancel',
+    editBoard: 'Edit board', deleteBoard: 'Delete board', save: 'Save', cancel: 'Cancel',
     boardName: 'Board name', boardDescription: 'Description', boardColor: 'Background',
     updateSuccess: 'Board updated', updateError: 'Could not update board',
     boardView: 'Board view', noDescription: 'No description yet.',
@@ -249,6 +250,7 @@ function BoardEditModal({ board, l, onClose, onSaved }) {
 // ── Main page ──────────────────────────────────────────────────────
 export default function BoardPage() {
   const { boardId }   = useParams();
+  const navigate      = useNavigate();
   const lang          = useUiStore(s => s.language) || 'vi';
   const l             = L[lang] || L.vi;
   const user          = useAuthStore(s => s.user);
@@ -298,7 +300,7 @@ export default function BoardPage() {
       ? workspace.members.find((m) => getId(m.user)?.toString() === userId)
       : null;
 
-    return member?.role === 'admin';
+    return ['admin', 'staff'].includes(member?.role);
   }, [user, board, workspace]);
 
   if (state.status === 'loading') return (

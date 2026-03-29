@@ -14,8 +14,21 @@ const getAccessibleWorkspaceIds = async (user) => {
   if (user.role === 'admin') return null;
   const workspaces = await Workspace.find({
     $or: [{ owner: user._id }, { 'members.user': user._id }],
-  }).select('_id');
-  return workspaces.map((w) => w._id);
+  }).select('_id members owner');
+
+  if (user.role === 'staff') {
+    return workspaces.map((w) => w._id);
+  }
+
+  const accessibleWorkspaceIds = workspaces
+    .filter((w) => {
+      if (w.owner?.toString() === user._id.toString()) return true;
+      const member = (w.members || []).find((m) => m.user.toString() === user._id.toString());
+      return member && ['admin', 'staff'].includes(member.role);
+    })
+    .map((w) => w._id);
+
+  return accessibleWorkspaceIds;
 };
 
 // @desc  Get boards the current user can access (with pagination, filter, sort)
@@ -23,18 +36,27 @@ const getAccessibleWorkspaceIds = async (user) => {
 exports.getBoards = asyncHandler(async (req, res) => {
   const query = {};
   const accessibleWorkspaceIds = await getAccessibleWorkspaceIds(req.user);
-  if (accessibleWorkspaceIds && accessibleWorkspaceIds.length === 0)
+  const userId = req.user._id.toString();
+
+  if (accessibleWorkspaceIds && accessibleWorkspaceIds.length === 0 && req.user.role !== 'user')
     return res.status(200).json({ success: true, data: [], meta: { total: 0 } });
 
-  if (req.query.workspaceId) {
-    query.workspace = req.query.workspaceId;
-  } else if (accessibleWorkspaceIds) {
-    query.workspace = { $in: accessibleWorkspaceIds };
-  }
+  if (req.user.role === 'user') {
+    query['members.user'] = req.user._id;
+    if (req.query.workspaceId) {
+      query.workspace = req.query.workspaceId;
+    }
+  } else {
+    if (req.query.workspaceId) {
+      query.workspace = req.query.workspaceId;
+    } else if (accessibleWorkspaceIds) {
+      query.workspace = { $in: accessibleWorkspaceIds };
+    }
 
-  if (accessibleWorkspaceIds && req.query.workspaceId) {
-    const ok = accessibleWorkspaceIds.some((id) => id.toString() === req.query.workspaceId);
-    if (!ok) return res.status(200).json({ success: true, data: [], meta: { total: 0 } });
+    if (accessibleWorkspaceIds && req.query.workspaceId) {
+      const ok = accessibleWorkspaceIds.some((id) => id.toString() === req.query.workspaceId);
+      if (!ok) return res.status(200).json({ success: true, data: [], meta: { total: 0 } });
+    }
   }
 
   if (req.query.isClosed !== undefined) query.isClosed = req.query.isClosed === 'true';
@@ -90,8 +112,19 @@ exports.createBoard = asyncHandler(async (req, res, next) => {
   const workspace = await Workspace.findById(workspaceId);
   if (!workspace) return next(new AppError('Workspace not found', 404));
 
+  const userId = req.user._id.toString();
+  const workspaceMember = workspace.members.find((m) => m.user.toString() === userId);
+  const canCreateBoard = req.user.role === 'admin'
+    || workspace.owner.toString() === userId
+    || (workspaceMember && ['admin', 'staff'].includes(workspaceMember.role));
+
+  if (!canCreateBoard) {
+    return next(new AppError('You do not have permission to create boards in this workspace', 403));
+  }
+
   const board = await Board.create({
     name: name.trim(), description, workspace: workspaceId, background, createdBy: req.user._id,
+    members: [{ user: req.user._id, role: req.user.role === 'staff' ? 'staff' : 'admin' }],
   });
 
   await Activity.log({

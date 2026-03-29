@@ -105,12 +105,29 @@ const isBoardMember = asyncHandler(async (req, res, next) => {
     return next();
   }
 
-  // Check if user is workspace member
-  const isMember = workspace.members.some(
-    (member) => member.user.toString() === req.user._id.toString()
+  const userId = req.user._id.toString();
+  const isWorkspaceOwner = workspace.owner.toString() === userId;
+  const workspaceMember = workspace.members.find(
+    (member) => member.user.toString() === userId
   );
 
-  if (!isMember && workspace.owner.toString() !== req.user._id.toString()) {
+  if (!isWorkspaceOwner && !workspaceMember) {
+    return next(new AppError('You do not have access to this board', 403));
+  }
+
+  // Staff/admin in workspace can access all boards in that workspace.
+  if (isWorkspaceOwner || ['admin', 'staff'].includes(workspaceMember?.role)) {
+    req.board = board;
+    req.workspace = workspace;
+    return next();
+  }
+
+  // Normal user/member only sees boards explicitly assigned to them.
+  const isExplicitBoardMember = (board.members || []).some(
+    (member) => member.user.toString() === userId
+  );
+
+  if (!isExplicitBoardMember) {
     return next(new AppError('You do not have access to this board', 403));
   }
 
@@ -174,7 +191,7 @@ const canManageBoard = asyncHandler(async (req, res, next) => {
     (m) => m.user.toString() === userId
   );
 
-  if (member && member.role === 'admin') {
+  if (member && ['admin', 'staff'].includes(member.role)) {
     return next();
   }
 
