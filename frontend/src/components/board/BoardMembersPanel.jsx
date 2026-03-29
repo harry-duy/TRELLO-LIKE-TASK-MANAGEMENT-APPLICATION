@@ -121,14 +121,22 @@ export default function BoardMembersPanel({ boardId, workspaceId, lang = 'vi', o
   const loadMembers = async () => {
     setLoading(true);
     try {
-      const res = await apiClient.get(`/workspaces/${workspaceId}`);
-      const ws  = res?.data || res;
+      const [wsRes, boardMembersRes] = await Promise.all([
+        apiClient.get(`/workspaces/${workspaceId}`),
+        apiClient.get(`/boards/${boardId}/members`),
+      ]);
+      const ws  = wsRes?.data || wsRes;
+      const boardMembers = boardMembersRes?.data || boardMembersRes;
       setWorkspace(ws);
+
+      const ownerId = (ws.owner?._id || ws.owner)?.toString();
+      const normalizedBoardMembers = Array.isArray(boardMembers)
+        ? boardMembers.filter((m) => (m.user?._id || m.user)?.toString() !== ownerId)
+        : [];
+
       setMembers([
         { user: ws.owner, role: 'owner' },
-        ...(ws.members || []).filter(
-          (m) => (m.user?._id || m.user)?.toString() !== (ws.owner?._id || ws.owner)?.toString()
-        ),
+        ...normalizedBoardMembers,
       ]);
     } catch {
       setMembers([]);
@@ -151,8 +159,7 @@ export default function BoardMembersPanel({ boardId, workspaceId, lang = 'vi', o
 
     setInviting(true);
     try {
-      // ✅ Gọi đúng workspace route — KHÔNG dùng /admin/workspaces
-      await apiClient.post(`/workspaces/${workspaceId}/members`, {
+      await apiClient.post(`/boards/${boardId}/members`, {
         email: inviteEmail.trim().toLowerCase(),
         role:  inviteRole,
       });
@@ -174,8 +181,7 @@ export default function BoardMembersPanel({ boardId, workspaceId, lang = 'vi', o
     }
 
     try {
-      // ✅ Gọi đúng workspace route
-      await apiClient.delete(`/workspaces/${workspaceId}/members/${userId}`);
+      await apiClient.delete(`/boards/${boardId}/members/${userId}`);
       toast.success(l.member + ' removed');
       loadMembers();
     } catch (err) {
