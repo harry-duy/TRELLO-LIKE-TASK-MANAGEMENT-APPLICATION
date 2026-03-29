@@ -3,7 +3,7 @@
 
 const express        = require('express');
 const router         = express.Router();
-const { protect, isBoardMember, isWorkspaceMember } = require('../middleware/auth.middleware');
+const { protect, isBoardMember, isWorkspaceMember, canManageBoard } = require('../middleware/auth.middleware');
 const boardController = require('../controllers/board.controller');
 const { validate, boardSchemas } = require('../middleware/validation.middleware');
 
@@ -18,10 +18,10 @@ router.post(
 );
 
 router.get(    '/:id', protect, isBoardMember, boardController.getBoard);
-router.put(    '/:id', protect, validate(boardSchemas.update), isBoardMember, boardController.updateBoard);
-router.delete( '/:id', protect, isBoardMember, boardController.deleteBoard);
+router.put(    '/:id', protect, validate(boardSchemas.update), isBoardMember, canManageBoard, boardController.updateBoard);
+router.delete( '/:id', protect, isBoardMember, canManageBoard, boardController.deleteBoard);
 
-// ✅ MỚI: toggle star — chỉ cần đăng nhập, không cần là board member
-router.patch('/:id/star', protect, boardController.toggleStar);
+// Star/unstar chỉ dành cho user có quyền truy cập board
+router.patch('/:id/star', protect, isBoardMember, boardController.toggleStar);
 
 module.exports = router;

@@ -57,6 +57,14 @@ const workspaceService = {
     );
     return res?.data ?? res;
   },
+
+  transferOwnership: async (workspaceId, userId) => {
+    const res = await apiClient.patch(
+      `/workspaces/${workspaceId}/transfer-ownership`,
+      { userId }
+    );
+    return res?.data ?? res;
+  },
 };
 
 export default workspaceService;

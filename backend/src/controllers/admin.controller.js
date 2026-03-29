@@ -210,6 +210,52 @@ exports.updateBoardStatus = asyncHandler(async (req, res, next) => {
   });
 });
 
+exports.deleteBoard = asyncHandler(async (req, res, next) => {
+  const { boardId } = req.params;
+
+  const board = await Board.findById(boardId);
+  if (!board) {
+    return next(new AppError('Board not found', 404));
+  }
+
+  await Card.deleteMany({ board: board._id });
+  await Activity.deleteMany({ board: board._id });
+  await Board.findByIdAndDelete(boardId);
+
+  res.status(200).json({
+    success: true,
+    message: 'Board deleted successfully',
+    data: { id: boardId },
+  });
+});
+
+exports.deleteWorkspace = asyncHandler(async (req, res, next) => {
+  const { workspaceId } = req.params;
+
+  const workspace = await Workspace.findById(workspaceId);
+  if (!workspace) {
+    return next(new AppError('Workspace not found', 404));
+  }
+
+  const boards = await Board.find({ workspace: workspaceId }).select('_id');
+  const boardIds = boards.map((board) => board._id);
+
+  if (boardIds.length > 0) {
+    await Card.deleteMany({ board: { $in: boardIds } });
+    await Activity.deleteMany({ board: { $in: boardIds } });
+    await Board.deleteMany({ _id: { $in: boardIds } });
+  }
+
+  await Activity.deleteMany({ workspace: workspaceId });
+  await Workspace.findByIdAndDelete(workspaceId);
+
+  res.status(200).json({
+    success: true,
+    message: 'Workspace deleted successfully',
+    data: { id: workspaceId },
+  });
+});
+
 exports.getSystemOverview = asyncHandler(async (req, res) => {
   const [
     totalUsers,
@@ -458,38 +504,6 @@ exports.getSystemResources = asyncHandler(async (req, res) => {
         allowedExtensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf'],
       },
       cloudinary: cloudinaryStatus,
-    },
-  });
-});
-
-exports.getSystemLogs = asyncHandler(async (req, res, next) => {
-  const allowedFiles = new Set(['combined.log', 'error.log', 'exceptions.log', 'rejections.log']);
-  const file = req.query.file || 'combined.log';
-  const lines = Math.min(Math.max(parseInt(req.query.lines || '200', 10), 1), 2000);
-
-  if (!allowedFiles.has(file)) {
-    return next(new AppError('Invalid log file', 400));
-  }
-
-  const logPath = path.join(__dirname, '../../logs', file);
-
-  let fileContent = '';
-  try {
-    fileContent = await fs.readFile(logPath, 'utf8');
-  } catch (error) {
-    return next(new AppError('Cannot read log file', 500));
-  }
-
-  const allLines = fileContent.split(/\r?\n/).filter(Boolean);
-  const tailLines = allLines.slice(-lines);
-
-  res.status(200).json({
-    success: true,
-    data: {
-      file,
-      lines: tailLines,
-      returned: tailLines.length,
-      total: allLines.length,
     },
   });
 });

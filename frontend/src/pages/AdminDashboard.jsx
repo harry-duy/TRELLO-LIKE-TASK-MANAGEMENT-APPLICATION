@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import adminService from '@services/adminService';
 import apiClient from '@config/api';
@@ -17,8 +17,6 @@ export default function AdminDashboard() {
   const [boardSearch,        setBoardSearch]        = useState('');
   const [boardClosedFilter,  setBoardClosedFilter]  = useState('');
   const [activityActionFilter,setActivityActionFilter] = useState('');
-  const [logFile,            setLogFile]            = useState('combined.log');
-  const [logLines,           setLogLines]           = useState(150);
   const [analyticsDays,      setAnalyticsDays]      = useState(7);
 
   const queryParams = useMemo(() => ({
@@ -60,17 +58,24 @@ export default function AdminDashboard() {
     queryKey: ['admin-ai-usage'],
     queryFn: () => adminService.getAIUsageStats(30),
   });
-  const { data: activityData, isLoading: isActivityLoading } = useQuery({
+  const {
+    data: activityData,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading: isActivityLoading
+  } = useInfiniteQuery({
     queryKey: ['admin-system-activities', activityActionFilter],
-    queryFn: () => adminService.getSystemActivities({ page: 1, limit: 20, action: activityActionFilter }),
+    queryFn: ({ pageParam }) => adminService.getSystemActivities({ page: pageParam, limit: 30, action: activityActionFilter }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => {
+      const { page, totalPages } = lastPage.data.pagination;
+      return page < totalPages ? page + 1 : undefined;
+    },
   });
   const { data: resourceData, isLoading: isResourceLoading } = useQuery({
     queryKey: ['admin-system-resources'],
     queryFn: () => adminService.getSystemResources(),
-  });
-  const { data: logsData, isLoading: isLogsLoading } = useQuery({
-    queryKey: ['admin-system-logs', logFile, logLines],
-    queryFn: () => adminService.getSystemLogs({ file: logFile, lines: logLines }),
   });
 
   const users        = data?.data || [];
@@ -81,9 +86,8 @@ export default function AdminDashboard() {
   const userPerf     = workspaceAnalyticsData?.userPerformance || [];
   const aiSummary    = aiUsageData?.data?.summary || {};
   const aiByFeature  = aiUsageData?.data?.byFeature || [];
-  const activities   = activityData?.data?.activities || [];
+  const activities   = activityData?.pages?.flatMap(page => page.data.activities) || [];
   const resources    = resourceData?.data || {};
-  const logs         = logsData?.data?.lines || [];
 
   const refreshUsers      = () => queryClient.invalidateQueries({ queryKey: ['admin-users'] });
   const refreshWorkspaces = () => queryClient.invalidateQueries({ queryKey: ['admin-workspaces'] });
@@ -109,15 +113,35 @@ export default function AdminDashboard() {
     onSuccess: () => { toast.success('Đã cập nhật thành viên workspace'); refreshWorkspaces(); },
     onError: err => toast.error(err?.message || 'Không thể thêm thành viên'),
   });
+  const updateWorkspaceMemberRoleMutation = useMutation({
+    mutationFn: ({ workspaceId, userId, role }) => adminService.updateWorkspaceMemberRole(workspaceId, userId, role),
+    onSuccess: () => { toast.success('Đã cập nhật role workspace'); refreshWorkspaces(); },
+    onError: err => toast.error(err?.message || 'Không thể cập nhật role workspace'),
+  });
+  const transferOwnershipMutation = useMutation({
+    mutationFn: ({ workspaceId, userId }) => adminService.transferWorkspaceOwnership(workspaceId, userId),
+    onSuccess: () => { toast.success('Đã chuyển ownership workspace'); refreshWorkspaces(); },
+    onError: err => toast.error(err?.message || 'Không thể chuyển ownership'),
+  });
   const removeMemberMutation = useMutation({
     mutationFn: ({ workspaceId, userId }) => adminService.removeWorkspaceMember(workspaceId, userId),
     onSuccess: () => { toast.success('Đã xoá thành viên'); refreshWorkspaces(); },
     onError: err => toast.error(err?.message || 'Không thể xoá thành viên'),
   });
+  const deleteWorkspaceMutation = useMutation({
+    mutationFn: (workspaceId) => adminService.deleteWorkspace(workspaceId),
+    onSuccess: () => { toast.success('Đã xoá workspace'); refreshWorkspaces(); refreshBoards(); },
+    onError: err => toast.error(err?.message || 'Không thể xoá workspace'),
+  });
   const boardStatusMutation = useMutation({
     mutationFn: ({ boardId, isClosed }) => adminService.updateBoardStatus(boardId, isClosed),
     onSuccess: () => { toast.success('Đã cập nhật board'); refreshBoards(); },
     onError: err => toast.error(err?.message || 'Không thể cập nhật board'),
+  });
+  const deleteBoardMutation = useMutation({
+    mutationFn: (boardId) => adminService.deleteBoard(boardId),
+    onSuccess: () => { toast.success('Đã xoá board'); refreshBoards(); },
+    onError: err => toast.error(err?.message || 'Không thể xoá board'),
   });
 
   const handleDelete   = (userId, email) => {
@@ -127,8 +151,30 @@ export default function AdminDashboard() {
   const handleAddMember = (workspaceId) => {
     const userId = window.prompt('Nhập User ID cần thêm:');
     if (!userId) return;
-    const role = window.prompt('Role (admin/member):', 'member') || 'member';
+    const role = window.prompt('Role (admin/member/staff):', 'member') || 'member';
     addMemberMutation.mutate({ workspaceId, payload: { userId: userId.trim(), role: role.trim() } });
+  };
+
+  const handleUpdateWorkspaceMemberRole = (workspaceId, userId, currentRole) => {
+    const role = window.prompt('Role mới (admin/member/staff):', currentRole || 'member');
+    if (!role) return;
+    updateWorkspaceMemberRoleMutation.mutate({ workspaceId, userId, role: role.trim() });
+  };
+
+  const handleTransferOwnership = (workspaceId, currentOwnerId) => {
+    const userId = window.prompt('Nhập User ID member mới làm owner:', currentOwnerId || '');
+    if (!userId) return;
+    transferOwnershipMutation.mutate({ workspaceId, userId: userId.trim() });
+  };
+
+  const handleDeleteWorkspace = (workspaceId, name) => {
+    if (!window.confirm(`Xoá workspace ${name}? Toàn bộ board bên trong cũng sẽ bị xoá.`)) return;
+    deleteWorkspaceMutation.mutate(workspaceId);
+  };
+
+  const handleDeleteBoard = (boardId, name) => {
+    if (!window.confirm(`Xoá board ${name}?`)) return;
+    deleteBoardMutation.mutate(boardId);
   };
 
   // Colors for bar chart
@@ -290,7 +336,7 @@ export default function AdminDashboard() {
       {/* ── System Activity ── */}
       <div className="pt-4 border-t border-white/10">
         <h2 className="text-xl font-semibold text-white">Activity toàn hệ thống</h2>
-        <div className="mt-3">
+        <div className="mt-3 flex gap-3 flex-wrap">
           <select className="input w-56" value={activityActionFilter} onChange={e => setActivityActionFilter(e.target.value)}>
             <option value="">Tất cả hành động</option>
             <option value="card_created">card_created</option>
@@ -300,7 +346,15 @@ export default function AdminDashboard() {
             <option value="attachment_added">attachment_added</option>
           </select>
         </div>
-        <div className="card bg-white/10 border border-white/10 overflow-auto mt-3">
+        <div 
+          className="card bg-white/10 border border-white/10 overflow-auto mt-3 h-96 relative"
+          onScroll={(e) => {
+            const { scrollTop, clientHeight, scrollHeight } = e.currentTarget;
+            if (scrollHeight - scrollTop <= clientHeight + 50 && hasNextPage && !isFetchingNextPage) {
+              fetchNextPage();
+            }
+          }}
+        >
           {isActivityLoading ? (
             <div className="p-4 text-sm text-emerald-100/70">Đang tải...</div>
           ) : (
@@ -315,8 +369,8 @@ export default function AdminDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {activities.map(act => (
-                  <tr key={act._id} className="border-t border-white/10">
+                {activities.map((act, i) => (
+                  <tr key={`${act._id}-${i}`} className="border-t border-white/10">
                     <td className="px-4 py-3">{new Date(act.createdAt).toLocaleString()}</td>
                     <td className="px-4 py-3">{act.actor?.email || 'N/A'}</td>
                     <td className="px-4 py-3">
@@ -326,8 +380,11 @@ export default function AdminDashboard() {
                     <td className="px-4 py-3">{act.board?.name || '-'}</td>
                   </tr>
                 ))}
-                {activities.length === 0 && (
+                {activities.length === 0 && !isActivityLoading && (
                   <tr><td className="px-4 py-5 text-center text-emerald-100/70" colSpan={5}>Chưa có activity.</td></tr>
+                )}
+                {isFetchingNextPage && (
+                  <tr><td className="px-4 py-3 text-center text-emerald-100/70" colSpan={5}>Đang tải thêm...</td></tr>
                 )}
               </tbody>
             </table>
@@ -355,31 +412,6 @@ export default function AdminDashboard() {
             </div>
           </div>
         )}
-
-        {/* System Logs */}
-        <div className="card bg-white/10 border border-white/10 p-3 mt-3">
-          <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
-            <h3 className="text-sm font-semibold text-emerald-50">System Logs</h3>
-            <div className="flex gap-2">
-              <select className="input py-1" value={logFile} onChange={e => setLogFile(e.target.value)}>
-                <option value="combined.log">combined.log</option>
-                <option value="error.log">error.log</option>
-                <option value="exceptions.log">exceptions.log</option>
-                <option value="rejections.log">rejections.log</option>
-              </select>
-              <input type="number" min={20} max={500} value={logLines}
-                onChange={e => setLogLines(Number(e.target.value) || 150)}
-                className="input py-1 w-28" />
-            </div>
-          </div>
-          {isLogsLoading ? (
-            <div className="text-sm text-emerald-100/70 mt-3">Đang tải logs...</div>
-          ) : (
-            <pre className="mt-3 max-h-72 overflow-auto rounded bg-black/40 p-3 text-xs text-emerald-100 whitespace-pre-wrap">
-              {logs.length > 0 ? logs.join('\n') : 'No log lines returned.'}
-            </pre>
-          )}
-        </div>
       </div>
 
       {/* ── User Management ── */}
@@ -477,15 +509,30 @@ export default function AdminDashboard() {
                   <div className="font-semibold text-emerald-50">{ws.name}</div>
                   <div className="text-xs text-emerald-100/70">Owner: {ws.owner?.email || 'N/A'} · Visibility: {ws.visibility}</div>
                 </div>
-                <button type="button" className="btn btn-secondary" onClick={() => handleAddMember(ws._id)} disabled={addMemberMutation.isPending}>
-                  Thêm member
-                </button>
+                <div className="flex items-center gap-2">
+                  <button type="button" className="btn btn-secondary" onClick={() => handleAddMember(ws._id)} disabled={addMemberMutation.isPending}>
+                    Thêm member
+                  </button>
+                  <button type="button" className="btn btn-secondary" onClick={() => handleTransferOwnership(ws._id, ws.owner?._id)} disabled={transferOwnershipMutation.isPending}>
+                    Chuyển owner
+                  </button>
+                  <button type="button" className="btn bg-red-500 hover:bg-red-600 text-white" onClick={() => handleDeleteWorkspace(ws._id, ws.name)} disabled={deleteWorkspaceMutation.isPending}>
+                    Xóa workspace
+                  </button>
+                </div>
               </div>
               <div className="mt-2 flex flex-wrap gap-2">
                 {(ws.members || []).map(m => (
                   <div key={m._id || m.user?._id} className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs">
                     <span>{m.user?.email || m.user}</span>
-                    <span className="text-emerald-100/70">({m.role})</span>
+                    <button
+                      type="button"
+                      className="text-emerald-100/70 hover:text-white"
+                      onClick={() => handleUpdateWorkspaceMemberRole(ws._id, m.user?._id || m.user, m.role)}
+                      disabled={updateWorkspaceMemberRoleMutation.isPending}
+                    >
+                      ({m.role})
+                    </button>
                     <button type="button" className="text-red-300 hover:text-red-200"
                       onClick={() => removeMemberMutation.mutate({ workspaceId: ws._id, userId: m.user?._id || m.user })}
                       disabled={removeMemberMutation.isPending}>✕</button>
@@ -520,11 +567,18 @@ export default function AdminDashboard() {
                 <div className="font-medium text-emerald-50">{board.name}</div>
                 <div className="text-xs text-emerald-100/70">Workspace: {board.workspace?.name || 'N/A'} · {board.isClosed ? 'Closed' : 'Open'}</div>
               </div>
-              <button type="button" className="btn btn-secondary"
-                onClick={() => boardStatusMutation.mutate({ boardId: board._id, isClosed: !board.isClosed })}
-                disabled={boardStatusMutation.isPending}>
-                {board.isClosed ? 'Mở lại' : 'Đóng board'}
-              </button>
+              <div className="flex items-center gap-2">
+                <button type="button" className="btn btn-secondary"
+                  onClick={() => boardStatusMutation.mutate({ boardId: board._id, isClosed: !board.isClosed })}
+                  disabled={boardStatusMutation.isPending}>
+                  {board.isClosed ? 'Mở lại' : 'Đóng board'}
+                </button>
+                <button type="button" className="btn bg-red-500 hover:bg-red-600 text-white"
+                  onClick={() => handleDeleteBoard(board._id, board.name)}
+                  disabled={deleteBoardMutation.isPending}>
+                  Xóa board
+                </button>
+              </div>
             </div>
           ))}
           {!isBoardLoading && boards.length === 0 && (

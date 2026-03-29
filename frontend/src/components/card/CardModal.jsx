@@ -267,8 +267,17 @@ export default function CardModal({ cardId, boardId, onClose }) {
           )}
         </div>
 
-        {/* ─── Due date ─── */}
+        {/* ─── Status & Due date ─── */}
         <div className="mb-5 flex items-center gap-3 flex-wrap">
+          <label className="flex items-center gap-2 cursor-pointer rounded bg-emerald-500/20 px-3 py-1.5 text-sm text-emerald-50 border border-emerald-500/30 transition hover:bg-emerald-500/30">
+            <input
+              type="checkbox"
+              checked={card?.isCompleted || false}
+              onChange={(e) => updateMutation.mutate({ isCompleted: e.target.checked })}
+              className="accent-emerald-500 w-4 h-4 cursor-pointer"
+            />
+            <span style={{ fontSize: 13, fontWeight: 600 }}>{lang === 'vi' ? 'Đã hoàn thành' : 'Completed'}</span>
+          </label>
           <DueDateBadge dueDate={card?.dueDate} isCompleted={card?.isCompleted} lang={lang} />
           {isEditing && (
             <input type="date" className="input w-auto" value={form.dueDate}

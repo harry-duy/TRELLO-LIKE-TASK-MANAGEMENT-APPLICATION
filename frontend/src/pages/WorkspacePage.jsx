@@ -184,6 +184,10 @@ export default function WorkspacePage() {
   const members = workspace?.members || [];
   const ownerId = getId(workspace?.owner)?.toString();
   const isOwner = ownerId === user?._id?.toString();
+  const myWorkspaceMember = (workspace?.members || []).find(
+    (m) => getId(m.user)?.toString() === user?._id?.toString()
+  );
+  const canCreateBoard = isOwner || ['admin', 'staff'].includes(myWorkspaceMember?.role);
   const accent = `hsl(${((workspace?.name?.charCodeAt(0) || 0) * 13) % 360}, 68%, 48%)`;
 
   if (workspaceId === 'new') {
@@ -288,9 +292,11 @@ export default function WorkspacePage() {
               <button className="btn btn-secondary btn-sm" onClick={() => navigate('/dashboard')}>
                 {l.backDashboard}
               </button>
-              <button className="btn btn-primary btn-sm" onClick={() => setIsCreatingBoard(true)}>
-                {l.createBoard}
-              </button>
+              {canCreateBoard && (
+                <button className="btn btn-primary btn-sm" onClick={() => setIsCreatingBoard(true)}>
+                  {l.createBoard}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -304,9 +310,11 @@ export default function WorkspacePage() {
           </div>
 
           <div className="space-y-3">
-            <button className="btn btn-primary w-full justify-center" onClick={() => setIsCreatingBoard(true)}>
-              {l.createBoard}
-            </button>
+            {canCreateBoard && (
+              <button className="btn btn-primary w-full justify-center" onClick={() => setIsCreatingBoard(true)}>
+                {l.createBoard}
+              </button>
+            )}
             <button className="btn btn-secondary w-full justify-center" onClick={() => navigate('/dashboard')}>
               {l.backDashboard}
             </button>
@@ -320,18 +328,22 @@ export default function WorkspacePage() {
             <h2 className="heading-soft text-lg font-semibold text-white">{l.boardSection}</h2>
             <p className="mt-1 text-sm text-white/45">{l.boardSectionHint}</p>
           </div>
-          <button className="btn btn-secondary btn-sm" onClick={() => setIsCreatingBoard(true)}>
-            {l.createBoard}
-          </button>
+          {canCreateBoard && (
+            <button className="btn btn-secondary btn-sm" onClick={() => setIsCreatingBoard(true)}>
+              {l.createBoard}
+            </button>
+          )}
         </div>
 
         {boards.length === 0 ? (
           <div className="rounded-[24px] border border-dashed border-white/10 bg-white/[0.04] px-5 py-8">
             <div className="text-base font-semibold text-white">{l.emptyBoards}</div>
             <div className="mt-2 max-w-xl text-sm text-white/50">{l.emptyBoardsHint}</div>
-            <button className="btn btn-primary btn-sm mt-4" onClick={() => setIsCreatingBoard(true)}>
-              {l.createBoard}
-            </button>
+            {canCreateBoard && (
+              <button className="btn btn-primary btn-sm mt-4" onClick={() => setIsCreatingBoard(true)}>
+                {l.createBoard}
+              </button>
+            )}
           </div>
         ) : (
           <div className="flex flex-wrap gap-4">
@@ -345,13 +357,15 @@ export default function WorkspacePage() {
               />
             ))}
 
-            <button
-              type="button"
-              onClick={() => setIsCreatingBoard(true)}
-              className="flex min-h-[162px] w-[264px] items-center justify-center rounded-[18px] border border-dashed border-white/18 bg-white/[0.03] px-6 text-center text-[15px] font-medium text-white/65 transition hover:border-emerald-200/25 hover:bg-white/[0.06] hover:text-white"
-            >
-              {l.createBoard}
-            </button>
+            {canCreateBoard && (
+              <button
+                type="button"
+                onClick={() => setIsCreatingBoard(true)}
+                className="flex min-h-[162px] w-[264px] items-center justify-center rounded-[18px] border border-dashed border-white/18 bg-white/[0.03] px-6 text-center text-[15px] font-medium text-white/65 transition hover:border-emerald-200/25 hover:bg-white/[0.06] hover:text-white"
+              >
+                {l.createBoard}
+              </button>
+            )}
           </div>
         )}
       </section>

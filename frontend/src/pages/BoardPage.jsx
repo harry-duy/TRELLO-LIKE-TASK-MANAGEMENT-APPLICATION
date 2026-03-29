@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import boardService from '@services/boardService';
 import { useUiStore } from '@store/uiStore';
+import { useAuthStore } from '@store/authStore';
 import BoardCanvas from '@components/board/BoardCanvas';
 import toast from 'react-hot-toast';
 import apiClient from '@config/api';
@@ -14,6 +15,7 @@ const L = {
     workspaceFallback: 'Workspace',
     openWorkspace: 'Về workspace',
     editBoard: 'Chỉnh sửa board',
+    deleteBoard: 'Xóa board',
     save: 'Lưu', cancel: 'Huỷ',
     boardName: 'Tên board', boardDescription: 'Mô tả', boardColor: 'Màu nền',
     updateSuccess: 'Đã cập nhật board', updateError: 'Không thể cập nhật board',
@@ -29,7 +31,7 @@ const L = {
     boardFallback: 'Board',
     workspaceFallback: 'Workspace',
     openWorkspace: 'Back to workspace',
-    editBoard: 'Edit board', save: 'Save', cancel: 'Cancel',
+    editBoard: 'Edit board', deleteBoard: 'Delete board', save: 'Save', cancel: 'Cancel',
     boardName: 'Board name', boardDescription: 'Description', boardColor: 'Background',
     updateSuccess: 'Board updated', updateError: 'Could not update board',
     boardView: 'Board view', noDescription: 'No description yet.',
@@ -248,8 +250,10 @@ function BoardEditModal({ board, l, onClose, onSaved }) {
 // ── Main page ──────────────────────────────────────────────────────
 export default function BoardPage() {
   const { boardId }   = useParams();
+  const navigate      = useNavigate();
   const lang          = useUiStore(s => s.language) || 'vi';
   const l             = L[lang] || L.vi;
+  const user          = useAuthStore(s => s.user);
   const [state,          setState]          = useState({ status: 'loading', board: null, error: null });
   const [isEditingBoard, setIsEditingBoard] = useState(false);
   const [showActivity,   setShowActivity]   = useState(false);
@@ -280,6 +284,24 @@ export default function BoardPage() {
     if (Array.isArray(workspace?.members)) return workspace.members.length;
     return 0;
   }, [board, workspace]);
+
+  const canManageBoard = useMemo(() => {
+    if (!user || !board || !workspace) return false;
+    if (user.role === 'admin') return true;
+
+    const userId = getId(user)?.toString();
+    const ownerId = getId(workspace.owner)?.toString();
+    const creatorId = getId(board.createdBy)?.toString();
+
+    if (ownerId === userId) return true;
+    if (creatorId === userId) return true;
+
+    const member = Array.isArray(workspace.members)
+      ? workspace.members.find((m) => getId(m.user)?.toString() === userId)
+      : null;
+
+    return ['admin', 'staff'].includes(member?.role);
+  }, [user, board, workspace]);
 
   if (state.status === 'loading') return (
     <div className="flex items-center gap-2 text-emerald-100/70"><div className="spinner border-primary-600" />{l.loading}</div>
@@ -329,9 +351,28 @@ export default function BoardPage() {
             >
               📋 {showActivity ? l.hideActivity : l.showActivity}
             </button>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setIsEditingBoard(true)}>
-              {l.editBoard}
-            </button>
+            {canManageBoard && (
+              <>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setIsEditingBoard(true)}>
+                  {l.editBoard}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={async () => {
+                    if (!window.confirm(l.deleteBoard)) return;
+                    try {
+                      await boardService.deleteBoard(board._id);
+                      navigate(workspaceId ? `/workspace/${workspaceId}` : '/dashboard');
+                    } catch (error) {
+                      toast.error(error?.message || l.updateError);
+                    }
+                  }}
+                >
+                  {l.deleteBoard}
+                </button>
+              </>
+            )}
             {workspaceId && (
               <Link to={`/workspace/${workspaceId}`} className="btn btn-secondary btn-sm">
                 {l.openWorkspace}

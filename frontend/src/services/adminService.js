@@ -49,8 +49,20 @@ const adminService = {
     return apiClient.post(`/admin/workspaces/${workspaceId}/members`, payload);
   },
 
+  updateWorkspaceMemberRole: async (workspaceId, userId, role) => {
+    return apiClient.patch(`/workspaces/${workspaceId}/members/${userId}/role`, { role });
+  },
+
+  transferWorkspaceOwnership: async (workspaceId, userId) => {
+    return apiClient.patch(`/workspaces/${workspaceId}/transfer-ownership`, { userId });
+  },
+
   removeWorkspaceMember: async (workspaceId, userId) => {
     return apiClient.delete(`/admin/workspaces/${workspaceId}/members/${userId}`);
+  },
+
+  deleteWorkspace: async (workspaceId) => {
+    return apiClient.delete(`/admin/workspaces/${workspaceId}`);
   },
 
   getBoards: async (params = {}) => {
@@ -70,6 +82,10 @@ const adminService = {
 
   updateBoardStatus: async (boardId, isClosed) => {
     return apiClient.patch(`/admin/boards/${boardId}/status`, { isClosed });
+  },
+
+  deleteBoard: async (boardId) => {
+    return apiClient.delete(`/admin/boards/${boardId}`);
   },
 
   getSystemOverview: async () => {
@@ -98,16 +114,6 @@ const adminService = {
 
   getSystemResources: async () => {
     return apiClient.get('/admin/system-resources');
-  },
-
-  getSystemLogs: async (params = {}) => {
-    const query = new URLSearchParams();
-    if (params.file) query.set('file', params.file);
-    if (params.lines) query.set('lines', String(params.lines));
-
-    const queryString = query.toString();
-    const path = queryString ? `/admin/logs?${queryString}` : '/admin/logs';
-    return apiClient.get(path);
   },
 };
 

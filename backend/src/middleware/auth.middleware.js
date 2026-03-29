@@ -66,6 +66,12 @@ const isWorkspaceMember = asyncHandler(async (req, res, next) => {
     return next(new AppError('Workspace not found', 404));
   }
 
+  // Admin override
+  if (req.user.role === 'admin') {
+    req.workspace = workspace;
+    return next();
+  }
+
   // Check if user is member or owner
   const isMember = workspace.members.some(
     (member) => member.user.toString() === req.user._id.toString()
@@ -90,13 +96,38 @@ const isBoardMember = asyncHandler(async (req, res, next) => {
     return next(new AppError('Board not found', 404));
   }
 
-  // Check if user is workspace member
   const workspace = board.workspace;
-  const isMember = workspace.members.some(
-    (member) => member.user.toString() === req.user._id.toString()
+
+  // Admin override
+  if (req.user.role === 'admin') {
+    req.board = board;
+    req.workspace = workspace;
+    return next();
+  }
+
+  const userId = req.user._id.toString();
+  const isWorkspaceOwner = workspace.owner.toString() === userId;
+  const workspaceMember = workspace.members.find(
+    (member) => member.user.toString() === userId
   );
 
-  if (!isMember && workspace.owner.toString() !== req.user._id.toString()) {
+  if (!isWorkspaceOwner && !workspaceMember) {
+    return next(new AppError('You do not have access to this board', 403));
+  }
+
+  // Staff/admin in workspace can access all boards in that workspace.
+  if (isWorkspaceOwner || ['admin', 'staff'].includes(workspaceMember?.role)) {
+    req.board = board;
+    req.workspace = workspace;
+    return next();
+  }
+
+  // Normal user/member only sees boards explicitly assigned to them.
+  const isExplicitBoardMember = (board.members || []).some(
+    (member) => member.user.toString() === userId
+  );
+
+  if (!isExplicitBoardMember) {
     return next(new AppError('You do not have access to this board', 403));
   }
 
@@ -111,8 +142,8 @@ const checkWorkspacePermission = (requiredRole) => {
     const workspace = req.workspace;
     const userId = req.user._id.toString();
 
-    // Owner has all permissions
-    if (workspace.owner.toString() === userId) {
+    // Admin override & Owner have all permissions
+    if (req.user.role === 'admin' || workspace.owner.toString() === userId) {
       return next();
     }
 
@@ -125,7 +156,7 @@ const checkWorkspacePermission = (requiredRole) => {
       return next(new AppError('You are not a member of this workspace', 403));
     }
 
-    const roleHierarchy = { admin: 2, member: 1 };
+    const roleHierarchy = { admin: 2, member: 1, staff: 1 };
     const memberLevel = roleHierarchy[member.role] || 0;
     const requiredLevel = roleHierarchy[requiredRole] || 0;
 
@@ -139,10 +170,39 @@ const checkWorkspacePermission = (requiredRole) => {
   });
 };
 
+const canManageBoard = asyncHandler(async (req, res, next) => {
+  const board = req.board;
+  const workspace = req.workspace;
+  const userId = req.user._id.toString();
+
+  if (req.user.role === 'admin') {
+    return next();
+  }
+
+  if (board.createdBy && board.createdBy.toString() === userId) {
+    return next();
+  }
+
+  if (workspace.owner.toString() === userId) {
+    return next();
+  }
+
+  const member = workspace.members.find(
+    (m) => m.user.toString() === userId
+  );
+
+  if (member && ['admin', 'staff'].includes(member.role)) {
+    return next();
+  }
+
+  return next(new AppError('You do not have permission to manage this board', 403));
+});
+
 module.exports = {
   protect,
   restrictTo,
   isWorkspaceMember,
   isBoardMember,
   checkWorkspacePermission,
+  canManageBoard,
 };

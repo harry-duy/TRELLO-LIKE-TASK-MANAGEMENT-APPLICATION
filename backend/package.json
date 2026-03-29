@@ -8,6 +8,7 @@
     "dev": "node scripts/kill-port.js 5001 && nodemon src/server.js",
     "seed": "node scripts/seed.js",
     "bootstrap:admin": "node scripts/bootstrap-admin.js",
+    "sync:board-members": "node scripts/sync-board-members.js",
     "test": "jest --coverage --detectOpenHandles --runInBand",
     "test:watch": "jest --watch",
     "lint": "eslint src/**/*.js",

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '@store/authStore';
 import toast from 'react-hot-toast';
+import { useTranslation } from '../../hooks/useTranslation';
 
 const BACKEND_URL =
   import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5001';
@@ -29,20 +30,21 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const oauthError = searchParams.get('error');
+  const { t } = useTranslation();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!email.trim() || !password) {
-      toast.error('Vui lòng nhập email và mật khẩu');
+      toast.error(t('login_email_empty'));
       return;
     }
     setIsLoading(true);
     try {
       await login({ email: email.trim(), password });
-      toast.success('Đăng nhập thành công');
+      toast.success(t('login_success'));
       navigate('/dashboard');
     } catch (err) {
-      toast.error(err?.message || 'Đăng nhập thất bại');
+      toast.error(err?.message || t('login_fail'));
     } finally {
       setIsLoading(false);
     }
@@ -51,16 +53,16 @@ export default function LoginPage() {
   return (
     <div style={{ fontFamily: "'Plus Jakarta Sans', 'DM Sans', sans-serif" }}>
       <h1 className="text-2xl font-bold mb-1" style={{ color: 'white' }}>
-        Chào mừng trở lại 👋
+        {t('login_welcome')}
       </h1>
       <p className="text-sm mb-6" style={{ color: 'rgba(255,255,255,0.45)' }}>
-        Đăng nhập để tiếp tục với TaskFlow
+        {t('login_subtitle')}
       </p>
 
       {oauthError && (
         <div className="mb-4 p-3 rounded-xl text-sm"
           style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#fca5a5' }}>
-          Đăng nhập mạng xã hội thất bại. Vui lòng thử lại.
+          {t('login_oauth_error')}
         </div>
       )}
 
@@ -116,7 +118,7 @@ export default function LoginPage() {
       <div className="relative mb-5" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)' }} />
         <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.3)', whiteSpace: 'nowrap' }}>
-          hoặc đăng nhập bằng email
+          {t('login_or_email')}
         </span>
         <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)' }} />
       </div>
@@ -125,7 +127,7 @@ export default function LoginPage() {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label style={{ display: 'block', fontSize: '13px', fontWeight: '500', color: 'rgba(255,255,255,0.6)', marginBottom: '6px' }}>
-            Email
+            {t('login_email_label')}
           </label>
           <input
             type="email"
@@ -147,10 +149,10 @@ export default function LoginPage() {
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
             <label style={{ fontSize: '13px', fontWeight: '500', color: 'rgba(255,255,255,0.6)' }}>
-              Mật khẩu
+              {t('login_password_label')}
             </label>
             <Link to="/forgot-password" style={{ fontSize: '12px', color: '#a78bfa', textDecoration: 'none' }}>
-              Quên mật khẩu?
+              {t('login_forgot_password')}
             </Link>
           </div>
           <input
@@ -183,14 +185,14 @@ export default function LoginPage() {
             boxShadow: '0 4px 15px rgba(102,126,234,0.4)',
           }}
         >
-          {isLoading ? 'Đang đăng nhập...' : 'Đăng nhập'}
+          {isLoading ? t('login_button_loading') : t('login_button')}
         </button>
       </form>
 
       <p className="text-center mt-5" style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)' }}>
-        Chưa có tài khoản?{' '}
+        {t('login_no_account')}{' '}
         <Link to="/register" style={{ color: '#a78bfa', fontWeight: '600', textDecoration: 'none' }}>
-          Đăng ký miễn phí
+          {t('login_register_free')}
         </Link>
       </p>
     </div>
