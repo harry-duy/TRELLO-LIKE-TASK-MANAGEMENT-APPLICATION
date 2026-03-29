@@ -13,6 +13,13 @@ const hasFacebookOAuthConfig =
   Boolean(process.env.FACEBOOK_APP_ID) &&
   Boolean(process.env.FACEBOOK_APP_SECRET);
 
+const getRefreshCookieOptions = () => ({
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax',
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+});
+
 // Helper: sau OAuth thành công → tạo token → redirect frontend
 const handleOAuthSuccess = async (req, res, next) => {
   try {
@@ -27,12 +34,7 @@ const handleOAuthSuccess = async (req, res, next) => {
     user.refreshToken = refreshToken;
     await user.save({ validateBeforeSave: false });
 
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    res.cookie('refreshToken', refreshToken, getRefreshCookieOptions());
 
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
     res.redirect(`${frontendUrl}/oauth-callback?token=${accessToken}`);

@@ -20,6 +20,13 @@ const generateRefreshToken = (id) => {
   });
 };
 
+const getRefreshCookieOptions = () => ({
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: process.env.NODE_ENV === 'production' ? 'lax' : 'lax',
+  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+});
+
 // Send token response
 const sendTokenResponse = async (user, statusCode, res) => {
   const accessToken = generateToken(user._id);
@@ -30,14 +37,7 @@ const sendTokenResponse = async (user, statusCode, res) => {
   await user.save({ validateBeforeSave: false });
 
   // Set refresh token in httpOnly cookie
-  const cookieOptions = {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-  };
-
-  res.cookie('refreshToken', refreshToken, cookieOptions);
+  res.cookie('refreshToken', refreshToken, getRefreshCookieOptions());
 
   res.status(statusCode).json({
     success: true,
@@ -108,10 +108,11 @@ exports.logout = asyncHandler(async (req, res, next) => {
   req.user.refreshToken = undefined;
   await req.user.save({ validateBeforeSave: false });
 
-  // Clear cookie
-  res.cookie('refreshToken', 'none', {
-    expires: new Date(Date.now() + 10 * 1000),
-    httpOnly: true,
+  // Clear cookie with the same options shape used when setting it
+  res.clearCookie('refreshToken', {
+    ...getRefreshCookieOptions(),
+    maxAge: undefined,
+    expires: new Date(0),
   });
 
   res.status(200).json({
