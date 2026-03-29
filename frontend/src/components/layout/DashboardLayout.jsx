@@ -219,16 +219,13 @@ function BoardItem({ board, userId, onClose, onStarChange, l }) {
     setStarred(next);
     setBusy(true);
     try {
-      const res  = await apiClient.get(`/boards/${board._id}`);
-      const cur  = res?.data ?? res;
-      const list = cur?.starredBy || [];
-      const newList = next
-        ? (list.some(id=>(id?._id||id)?.toString()===userId?.toString()) ? list : [...list, userId])
-        : list.filter(id => (id?._id||id)?.toString() !== userId?.toString());
-      await apiClient.put(`/boards/${board._id}`, { starredBy: newList });
+      await boardService.toggleStar(board._id);
       if (onStarChange) onStarChange();
-    } catch { setStarred(!next); }
-    finally { setBusy(false); }
+    } catch {
+      setStarred(!next);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
