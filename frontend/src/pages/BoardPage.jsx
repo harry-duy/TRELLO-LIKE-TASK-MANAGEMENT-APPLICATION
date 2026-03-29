@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import boardService from '@services/boardService';
 import { useUiStore } from '@store/uiStore';
 import BoardCanvas from '@components/board/BoardCanvas';
@@ -14,6 +14,7 @@ const L = {
     workspaceFallback: 'Workspace',
     openWorkspace: 'Về workspace',
     editBoard: 'Chỉnh sửa board',
+    deleteBoard: 'Xoá board',
     save: 'Lưu', cancel: 'Huỷ',
     boardName: 'Tên board', boardDescription: 'Mô tả', boardColor: 'Màu nền',
     updateSuccess: 'Đã cập nhật board', updateError: 'Không thể cập nhật board',
@@ -22,6 +23,16 @@ const L = {
     activityFeed: 'Hoạt động gần đây', activityEmpty: 'Chưa có hoạt động nào.',
     activityLoading: 'Đang tải...', showActivity: 'Xem hoạt động', hideActivity: 'Ẩn',
     loadMore: 'Tải thêm',
+    delTitle: 'Xoá board',
+    delWarning: 'Board này sẽ bị xoá vĩnh viễn. Chọn board đích để chuyển tất cả card sang trước khi xoá, hoặc để trống để xoá hết card.',
+    delSelectBoard: 'Chọn board đích (để chuyển card)',
+    delNoMigrate: 'Không chuyển - xoá hết card',
+    delSelectList: 'Chọn danh sách nhận card',
+    delNoLists: 'Board này không có danh sách nào',
+    delConfirm: 'Xoá board',
+    delSuccess: 'Đã xoá board',
+    delError: 'Không thể xoá board',
+    delLoadingBoards: 'Đang tải danh sách board...',
   },
   en: {
     loading: 'Loading board...',
@@ -29,7 +40,9 @@ const L = {
     boardFallback: 'Board',
     workspaceFallback: 'Workspace',
     openWorkspace: 'Back to workspace',
-    editBoard: 'Edit board', save: 'Save', cancel: 'Cancel',
+    editBoard: 'Edit board',
+    deleteBoard: 'Delete board',
+    save: 'Save', cancel: 'Cancel',
     boardName: 'Board name', boardDescription: 'Description', boardColor: 'Background',
     updateSuccess: 'Board updated', updateError: 'Could not update board',
     boardView: 'Board view', noDescription: 'No description yet.',
@@ -37,6 +50,16 @@ const L = {
     activityFeed: 'Recent activity', activityEmpty: 'No activity yet.',
     activityLoading: 'Loading...', showActivity: 'Show activity', hideActivity: 'Hide',
     loadMore: 'Load more',
+    delTitle: 'Delete board',
+    delWarning: 'This board will be permanently deleted. Select a destination board to migrate all cards, or leave empty to delete all cards.',
+    delSelectBoard: 'Select destination board (to migrate cards)',
+    delNoMigrate: 'No migration — delete all cards',
+    delSelectList: 'Select destination list',
+    delNoLists: 'This board has no lists',
+    delConfirm: 'Delete board',
+    delSuccess: 'Board deleted',
+    delError: 'Could not delete board',
+    delLoadingBoards: 'Loading boards...',
   },
 };
 
@@ -245,13 +268,152 @@ function BoardEditModal({ board, l, onClose, onSaved }) {
   );
 }
 
+// ── Delete Board Modal ─────────────────────────────────────────────
+function DeleteBoardModal({ board, workspaceId, l, onClose, onDeleted }) {
+  const [otherBoards,    setOtherBoards]    = useState([]);
+  const [loadingBoards,  setLoadingBoards]  = useState(true);
+  const [selectedBoardId, setSelectedBoardId] = useState('');
+  const [selectedListId,  setSelectedListId]  = useState('');
+  const [targetLists,    setTargetLists]    = useState([]);
+  const [loadingLists,   setLoadingLists]   = useState(false);
+  const [isDeleting,     setIsDeleting]     = useState(false);
+
+  // Load other boards in same workspace
+  useEffect(() => {
+    if (!workspaceId) { setLoadingBoards(false); return; }
+    boardService.getBoards({ workspaceId })
+      .then(res => {
+        const all = Array.isArray(res) ? res : (res?.data || []);
+        setOtherBoards(all.filter(b => b._id !== board._id));
+      })
+      .catch(() => setOtherBoards([]))
+      .finally(() => setLoadingBoards(false));
+  }, [workspaceId, board._id]);
+
+  // Load lists when target board selected
+  useEffect(() => {
+    if (!selectedBoardId) { setTargetLists([]); setSelectedListId(''); return; }
+    setLoadingLists(true);
+    boardService.getBoardDetails(selectedBoardId)
+      .then(res => {
+        const bd = res?.data ?? res;
+        setTargetLists(bd?.lists || []);
+        setSelectedListId('');
+      })
+      .catch(() => setTargetLists([]))
+      .finally(() => setLoadingLists(false));
+  }, [selectedBoardId]);
+
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    try {
+      const options = selectedBoardId && selectedListId ? { targetListId: selectedListId } : {};
+      await boardService.deleteBoard(board._id, options);
+      toast.success(l.delSuccess);
+      onDeleted(workspaceId);
+    } catch (err) {
+      toast.error(err?.message || l.delError);
+    } finally { setIsDeleting(false); }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div
+        className="modal-content"
+        style={{ maxWidth: 520, padding: 24, background: 'rgba(15,23,42,.98)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: 'white', margin: 0 }}>🗑 {l.delTitle}</h3>
+          <button type="button" className="board-inline-close" onClick={onClose}>×</button>
+        </div>
+
+        <p style={{ fontSize: 13, color: 'rgba(255,255,255,.6)', marginBottom: 20, lineHeight: 1.6 }}>
+          {l.delWarning}
+        </p>
+
+        {/* Select target board */}
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,.7)', display: 'block', marginBottom: 6 }}>
+            {l.delSelectBoard}
+          </label>
+          {loadingBoards ? (
+            <p style={{ fontSize: 12, color: 'rgba(255,255,255,.4)' }}>{l.delLoadingBoards}</p>
+          ) : (
+            <select
+              className="input"
+              value={selectedBoardId}
+              onChange={e => setSelectedBoardId(e.target.value)}
+              style={{ width: '100%' }}
+            >
+              <option value="">{l.delNoMigrate}</option>
+              {otherBoards.map(b => (
+                <option key={b._id} value={b._id}>{b.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        {/* Select target list */}
+        {selectedBoardId && (
+          <div style={{ marginBottom: 20 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,.7)', display: 'block', marginBottom: 6 }}>
+              {l.delSelectList}
+            </label>
+            {loadingLists ? (
+              <p style={{ fontSize: 12, color: 'rgba(255,255,255,.4)' }}>{l.delLoadingBoards}</p>
+            ) : targetLists.length === 0 ? (
+              <p style={{ fontSize: 12, color: 'rgba(255,100,100,.6)' }}>{l.delNoLists}</p>
+            ) : (
+              <select
+                className="input"
+                value={selectedListId}
+                onChange={e => setSelectedListId(e.target.value)}
+                style={{ width: '100%' }}
+              >
+                <option value="">-- {l.delSelectList} --</option>
+                {targetLists.map(li => (
+                  <option key={li._id} value={li._id}>{li.name}</option>
+                ))}
+              </select>
+            )}
+          </div>
+        )}
+
+        {/* Warning if migrating but no list chosen */}
+        {selectedBoardId && !selectedListId && (
+          <p style={{ fontSize: 12, color: '#fbbf24', marginBottom: 16 }}>
+            ⚠ {l.delSelectList}
+          </p>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onClose} disabled={isDeleting}>
+            {l.cancel}
+          </button>
+          <button
+            type="button"
+            className="btn btn-danger btn-sm"
+            onClick={handleDelete}
+            disabled={isDeleting || (selectedBoardId && !selectedListId)}
+          >
+            {isDeleting ? '...' : l.delConfirm}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main page ──────────────────────────────────────────────────────
 export default function BoardPage() {
   const { boardId }   = useParams();
+  const navigate      = useNavigate();
   const lang          = useUiStore(s => s.language) || 'vi';
   const l             = L[lang] || L.vi;
   const [state,          setState]          = useState({ status: 'loading', board: null, error: null });
   const [isEditingBoard, setIsEditingBoard] = useState(false);
+  const [isDeletingBoard, setIsDeletingBoard] = useState(false);
   const [showActivity,   setShowActivity]   = useState(false);
 
   useEffect(() => {
@@ -332,6 +494,13 @@ export default function BoardPage() {
             <button type="button" className="btn btn-secondary btn-sm" onClick={() => setIsEditingBoard(true)}>
               {l.editBoard}
             </button>
+            <button
+              type="button"
+              className="btn btn-danger btn-sm"
+              onClick={() => setIsDeletingBoard(true)}
+            >
+              🗑 {l.deleteBoard}
+            </button>
             {workspaceId && (
               <Link to={`/workspace/${workspaceId}`} className="btn btn-secondary btn-sm">
                 {l.openWorkspace}
@@ -356,6 +525,20 @@ export default function BoardPage() {
           board={board} l={l}
           onClose={() => setIsEditingBoard(false)}
           onSaved={(nextBoard) => setState(prev => ({ ...prev, board: { ...prev.board, ...nextBoard } }))}
+        />
+      )}
+
+      {isDeletingBoard && (
+        <DeleteBoardModal
+          board={board}
+          workspaceId={workspaceId}
+          l={l}
+          onClose={() => setIsDeletingBoard(false)}
+          onDeleted={(wsId) => {
+            setIsDeletingBoard(false);
+            if (wsId) navigate(`/workspace/${wsId}`);
+            else navigate('/');
+          }}
         />
       )}
     </div>

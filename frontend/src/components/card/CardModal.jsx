@@ -135,11 +135,6 @@ export default function CardModal({ cardId, boardId, onClose }) {
     onError:   err => toast.error(err?.message || t('aiChecklistFetchError')),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: () => cardService.delete(cardId),
-    onSuccess:  () => { queryClient.invalidateQueries(['board', boardId]); onClose(); },
-  });
-
   const archiveMutation = useMutation({
     mutationFn: () => cardService.update(cardId, { isArchived: true }),
     onSuccess:  () => { queryClient.invalidateQueries(['board', boardId]); toast.success(lang === 'vi' ? 'Đã lưu trữ card' : 'Card archived'); onClose(); },
@@ -312,10 +307,6 @@ export default function CardModal({ cardId, boardId, onClose }) {
               )}
               <button onClick={() => archiveMutation.mutate()} className="btn btn-secondary btn-sm w-full text-left" style={{ color: '#fbbf24' }}>
                 📦 {lang === 'vi' ? 'Lưu trữ' : 'Archive'}
-              </button>
-              <button onClick={() => { if (window.confirm(lang === 'vi' ? 'Xoá card này?' : 'Delete this card?')) deleteMutation.mutate(); }}
-                className="btn btn-danger btn-sm w-full text-left">
-                🗑 {t('deleteCard')}
               </button>
             </div>
           </section>

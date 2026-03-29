@@ -21,6 +21,7 @@ import CardModal         from '@components/card/CardModal';
 import StarButton        from '@components/board/StarButton';
 import FilterBar, { applyFilters, countActiveFilters } from '@components/board/FilterBar';
 import BoardMembersPanel from '@components/board/BoardMembersPanel';
+import ArchivePanel      from '@components/board/ArchivePanel';
 import {
   initializeSocket, joinBoard, leaveBoard,
   onCardMoved, emitCardMove, onCommentAdded,
@@ -46,11 +47,11 @@ const L = {
     listNamePh:      'Tên danh sách...',
     addList:         'Thêm',
     cancel:          'Huỷ',
-    trashHint:       'Kéo để xoá',
     archiveHint:     'Kéo để lưu trữ',
+    archiveBtn:      'Lưu trữ',
     loadingBoard:    'Đang tải...',
     boardError:      'Lỗi tải bảng',
-    deleteCardError: 'Không thể xoá card',
+    deleteCardError: 'Không thể xoá card (chỉ xoá được từ lưu trữ)',
     moveCardError:   'Không thể di chuyển card',
     createListError: 'Không thể tạo danh sách',
     reorderListError:'Không thể đổi vị trí danh sách',
@@ -77,8 +78,8 @@ const L = {
     listNamePh:      'List name...',
     addList:         'Add list',
     cancel:          'Cancel',
-    trashHint:       'Drag to delete',
     archiveHint:     'Drag to archive',
+    archiveBtn:      'Archive',
     loadingBoard:    'Loading...',
     boardError:      'Failed to load board',
     deleteCardError: 'Could not delete card',
@@ -111,13 +112,11 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
   const [showFilter,     setShowFilter]     = useState(false);
   const [filter,         setFilter]         = useState(EMPTY_FILTER);
   const [showMembers,    setShowMembers]    = useState(false);
+  const [showArchive,    setShowArchive]    = useState(false);
 
-  const trash   = useDroppable({ id: 'trash' });
-  const archive = useDroppable({ id: 'archive' });
-  const trashRef   = useRef(null);
+  const archive    = useDroppable({ id: 'archive' });
   const archiveRef = useRef(null);
   const columnsRef = useRef(null);
-  const [trashHover,   setTrashHover]   = useState(false);
   const [archiveHover, setArchiveHover] = useState(false);
   const lastOverId  = useRef(null);
   const overZoneRef = useRef(null);
@@ -163,7 +162,7 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
       const cx = t.left + t.width / 2, cy = t.top + t.height / 2;
       return cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom;
     };
-    return hit(trashRef) ? 'trash' : hit(archiveRef) ? 'archive' : null;
+    return hit(archiveRef) ? 'archive' : null;
   };
 
   const handleDragStart = ({ active }) => {
@@ -190,7 +189,6 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
   const handleDragMove = (e) => {
     const z = getZoneHit(e);
     overZoneRef.current = z;
-    setTrashHover(z === 'trash');
     setArchiveHover(z === 'archive');
   };
 
@@ -237,17 +235,12 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
     }
 
     const cardId = active.id;
-    const zone   = overZoneRef.current || (over?.id === 'trash' ? 'trash' : over?.id === 'archive' ? 'archive' : null);
+    const zone   = overZoneRef.current || (over?.id === 'archive' ? 'archive' : null);
     const overId = zone || over?.id || lastOverId.current || null;
     setActiveCard(null); setActiveList(null); lastOverId.current = null; overZoneRef.current = null;
-    setTrashHover(false); setArchiveHover(false);
+    setArchiveHover(false);
     if (!overId) return;
 
-    if (zone === 'trash') {
-      try { await cardService.delete(cardId); queryClient.invalidateQueries(['board', boardId]); }
-      catch { toast.error(l.deleteCardError); }
-      return;
-    }
     if (zone === 'archive') {
       try {
         await cardService.update(cardId, { isArchived: true });
@@ -411,6 +404,20 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
               {l.members}
             </button>
 
+            {/* Archive */}
+            <button
+              className="board-button"
+              onClick={() => setShowArchive(v => !v)}
+              style={showArchive ? { background: 'rgba(251,191,36,.2)', color: '#fbbf24' } : { color: '#fbbf24' }}
+            >
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                <rect x="1.5" y="1.5" width="13" height="3" rx="1" stroke="currentColor" strokeWidth="1.4"/>
+                <path d="M3 4.5v9a1 1 0 001 1h8a1 1 0 001-1v-9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                <path d="M6.5 7.5h3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+              </svg>
+              {l.archiveBtn}
+            </button>
+
             {/* Share */}
             <button
               className="board-button"
@@ -494,7 +501,6 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
         onDragOver={e => { if (e.over?.id) lastOverId.current = e.over.id; }}
         onDragCancel={() => {
           overZoneRef.current = null;
-          setTrashHover(false);
           setArchiveHover(false);
         }}
       >
@@ -576,31 +582,7 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
         </div>
 
         {/* ─── Drop zones ─── */}
-        <div style={{ padding: '8px 16px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <div
-            ref={node => { trash.setNodeRef(node); trashRef.current = node; }}
-            style={{
-              border: '2px dashed',
-              borderColor: (trash.isOver || trashHover) ? 'var(--color-danger)' : 'rgba(255,255,255,.2)',
-              background: (trash.isOver || trashHover) ? 'rgba(248,113,104,.14)' : 'rgba(6,20,35,.22)',
-              borderRadius: 16,
-              padding: '12px 16px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 6,
-              fontSize: 12,
-              fontWeight: 500,
-              color: (trash.isOver || trashHover) ? 'var(--color-danger)' : 'rgba(255,255,255,.4)',
-              transition: 'all 150ms',
-            }}
-          >
-            <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-              <path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9.5a1 1 0 001 .5h6a1 1 0 001-.5L13 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            {l.trashHint}
-          </div>
-
+        <div style={{ padding: '8px 16px 16px' }}>
           <div
             ref={node => { archive.setNodeRef(node); archiveRef.current = node; }}
             style={{
@@ -685,6 +667,15 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
           workspaceId={workspaceId}
           lang={lang}
           onClose={() => setShowMembers(false)}
+        />
+      )}
+
+      {/* Archive Panel */}
+      {showArchive && (
+        <ArchivePanel
+          boardId={boardId}
+          lang={lang}
+          onClose={() => setShowArchive(false)}
         />
       )}
 

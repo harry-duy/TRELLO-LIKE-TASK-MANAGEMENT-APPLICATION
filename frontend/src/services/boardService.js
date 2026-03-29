@@ -24,8 +24,8 @@ const boardService = {
     return response.data;
   },
 
-  deleteBoard: async (boardId) => {
-    const response = await apiClient.delete(`/boards/${boardId}`);
+  deleteBoard: async (boardId, options = {}) => {
+    const response = await apiClient.delete(`/boards/${boardId}`, { data: options });
     return response?.data ?? response;
   },
 

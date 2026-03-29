@@ -161,14 +161,43 @@ exports.updateBoard = asyncHandler(async (req, res, next) => {
   res.status(200).json({ success: true, data: updated });
 });
 
-// @desc  Delete board
+// @desc  Delete board (optionally migrate cards to another list first)
 // @route DELETE /api/boards/:id
 exports.deleteBoard = asyncHandler(async (req, res, next) => {
   const board = await Board.findById(req.params.id);
   if (!board) return next(new AppError('Board not found', 404));
 
+  const { targetListId } = req.body;
+
   const lists   = await List.find({ board: board._id }).select('_id');
   const listIds = lists.map((l) => l._id);
+
+  // Migrate non-archived cards to target list before deletion
+  if (targetListId && listIds.length > 0) {
+    const targetList = await List.findById(targetListId).select('_id board');
+    if (!targetList) return next(new AppError('Target list not found', 404));
+
+    const targetBoardId    = targetList.board;
+    const targetCardCount  = await Card.countDocuments({ list: targetListId, isArchived: false });
+    const cardsToMove      = await Card.find({ list: { $in: listIds }, isArchived: false }).sort({ position: 1 });
+
+    if (cardsToMove.length > 0) {
+      const bulkOps = cardsToMove.map((card, i) => ({
+        updateOne: {
+          filter: { _id: card._id },
+          update: { $set: { list: targetListId, board: targetBoardId, position: targetCardCount + i } },
+        },
+      }));
+      await Card.bulkWrite(bulkOps);
+    }
+
+    // Only delete archived cards from this board
+    if (listIds.length > 0) {
+      await Card.deleteMany({ list: { $in: listIds }, isArchived: true });
+    }
+  } else if (listIds.length > 0) {
+    await Card.deleteMany({ list: { $in: listIds } });
+  }
 
   await Activity.log({
     actor: req.user._id, action: 'board_deleted',
@@ -177,12 +206,25 @@ exports.deleteBoard = asyncHandler(async (req, res, next) => {
   });
 
   if (listIds.length > 0) {
-    await Card.deleteMany({ list: { $in: listIds } });
     await List.deleteMany({ _id: { $in: listIds } });
   }
   await Board.deleteOne({ _id: board._id });
 
   res.status(200).json({ success: true, message: 'Board deleted successfully', data: { id: board._id } });
+});
+
+// @desc  Get archived cards for a board
+// @route GET /api/boards/:id/archived-cards
+exports.getArchivedCards = asyncHandler(async (req, res, next) => {
+  const board = await Board.findById(req.params.id).select('_id');
+  if (!board) return next(new AppError('Board not found', 404));
+
+  const cards = await Card.find({ board: req.params.id, isArchived: true })
+    .populate('list', 'name')
+    .populate('assignees', 'name email avatar')
+    .sort({ updatedAt: -1 });
+
+  res.status(200).json({ success: true, data: cards });
 });
 
 // @desc  Star or unstar a board for the current user

@@ -21,6 +21,8 @@ router.get(    '/:id', protect, isBoardMember, boardController.getBoard);
 router.put(    '/:id', protect, validate(boardSchemas.update), isBoardMember, boardController.updateBoard);
 router.delete( '/:id', protect, isBoardMember, boardController.deleteBoard);
 
+router.get('/:id/archived-cards', protect, isBoardMember, boardController.getArchivedCards);
+
 // ✅ MỚI: toggle star — chỉ cần đăng nhập, không cần là board member
 router.patch('/:id/star', protect, boardController.toggleStar);
 
