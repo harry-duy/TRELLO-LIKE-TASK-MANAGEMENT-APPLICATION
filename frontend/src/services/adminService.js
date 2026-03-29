@@ -53,6 +53,10 @@ const adminService = {
     return apiClient.delete(`/admin/workspaces/${workspaceId}/members/${userId}`);
   },
 
+  deleteWorkspace: async (workspaceId) => {
+    return apiClient.delete(`/admin/workspaces/${workspaceId}`);
+  },
+
   getBoards: async (params = {}) => {
     const query = new URLSearchParams();
 
@@ -70,6 +74,10 @@ const adminService = {
 
   updateBoardStatus: async (boardId, isClosed) => {
     return apiClient.patch(`/admin/boards/${boardId}/status`, { isClosed });
+  },
+
+  deleteBoard: async (boardId) => {
+    return apiClient.delete(`/admin/boards/${boardId}`);
   },
 
   getSystemOverview: async () => {

@@ -118,10 +118,20 @@ export default function AdminDashboard() {
     onSuccess: () => { toast.success('Đã xoá thành viên'); refreshWorkspaces(); },
     onError: err => toast.error(err?.message || 'Không thể xoá thành viên'),
   });
+  const deleteWorkspaceMutation = useMutation({
+    mutationFn: (workspaceId) => adminService.deleteWorkspace(workspaceId),
+    onSuccess: () => { toast.success('Đã xoá workspace'); refreshWorkspaces(); refreshBoards(); },
+    onError: err => toast.error(err?.message || 'Không thể xoá workspace'),
+  });
   const boardStatusMutation = useMutation({
     mutationFn: ({ boardId, isClosed }) => adminService.updateBoardStatus(boardId, isClosed),
     onSuccess: () => { toast.success('Đã cập nhật board'); refreshBoards(); },
     onError: err => toast.error(err?.message || 'Không thể cập nhật board'),
+  });
+  const deleteBoardMutation = useMutation({
+    mutationFn: (boardId) => adminService.deleteBoard(boardId),
+    onSuccess: () => { toast.success('Đã xoá board'); refreshBoards(); },
+    onError: err => toast.error(err?.message || 'Không thể xoá board'),
   });
 
   const handleDelete   = (userId, email) => {
@@ -133,6 +143,16 @@ export default function AdminDashboard() {
     if (!userId) return;
     const role = window.prompt('Role (admin/member):', 'member') || 'member';
     addMemberMutation.mutate({ workspaceId, payload: { userId: userId.trim(), role: role.trim() } });
+  };
+
+  const handleDeleteWorkspace = (workspaceId, name) => {
+    if (!window.confirm(`Xoá workspace ${name}? Toàn bộ board bên trong cũng sẽ bị xoá.`)) return;
+    deleteWorkspaceMutation.mutate(workspaceId);
+  };
+
+  const handleDeleteBoard = (boardId, name) => {
+    if (!window.confirm(`Xoá board ${name}?`)) return;
+    deleteBoardMutation.mutate(boardId);
   };
 
   // Colors for bar chart
@@ -467,9 +487,14 @@ export default function AdminDashboard() {
                   <div className="font-semibold text-emerald-50">{ws.name}</div>
                   <div className="text-xs text-emerald-100/70">Owner: {ws.owner?.email || 'N/A'} · Visibility: {ws.visibility}</div>
                 </div>
-                <button type="button" className="btn btn-secondary" onClick={() => handleAddMember(ws._id)} disabled={addMemberMutation.isPending}>
-                  Thêm member
-                </button>
+                <div className="flex items-center gap-2">
+                  <button type="button" className="btn btn-secondary" onClick={() => handleAddMember(ws._id)} disabled={addMemberMutation.isPending}>
+                    Thêm member
+                  </button>
+                  <button type="button" className="btn bg-red-500 hover:bg-red-600 text-white" onClick={() => handleDeleteWorkspace(ws._id, ws.name)} disabled={deleteWorkspaceMutation.isPending}>
+                    Xóa workspace
+                  </button>
+                </div>
               </div>
               <div className="mt-2 flex flex-wrap gap-2">
                 {(ws.members || []).map(m => (
@@ -510,11 +535,18 @@ export default function AdminDashboard() {
                 <div className="font-medium text-emerald-50">{board.name}</div>
                 <div className="text-xs text-emerald-100/70">Workspace: {board.workspace?.name || 'N/A'} · {board.isClosed ? 'Closed' : 'Open'}</div>
               </div>
-              <button type="button" className="btn btn-secondary"
-                onClick={() => boardStatusMutation.mutate({ boardId: board._id, isClosed: !board.isClosed })}
-                disabled={boardStatusMutation.isPending}>
-                {board.isClosed ? 'Mở lại' : 'Đóng board'}
-              </button>
+              <div className="flex items-center gap-2">
+                <button type="button" className="btn btn-secondary"
+                  onClick={() => boardStatusMutation.mutate({ boardId: board._id, isClosed: !board.isClosed })}
+                  disabled={boardStatusMutation.isPending}>
+                  {board.isClosed ? 'Mở lại' : 'Đóng board'}
+                </button>
+                <button type="button" className="btn bg-red-500 hover:bg-red-600 text-white"
+                  onClick={() => handleDeleteBoard(board._id, board.name)}
+                  disabled={deleteBoardMutation.isPending}>
+                  Xóa board
+                </button>
+              </div>
             </div>
           ))}
           {!isBoardLoading && boards.length === 0 && (
