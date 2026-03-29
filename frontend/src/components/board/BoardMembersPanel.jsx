@@ -15,9 +15,12 @@ const L = {
     invite:      'Mời thành viên',
     invitePh:    'Nhập email người dùng',
     inviteBtn:   'Mời',
+    suggestTitle:'Thêm từ workspace',
+    suggestHint: 'Chọn nhanh thành viên đã có trong workspace',
+    addToBoard:  'Thêm vào board',
+    noSuggestions:'Không còn thành viên workspace nào để thêm',
     roleLabel:   'Role',
     owner:       'Chủ sở hữu',
-    admin:       'Admin',
     member:      'Thành viên',
     staff:       'Staff',
     remove:      'Xoá',
@@ -39,9 +42,12 @@ const L = {
     invite:      'Invite member',
     invitePh:    'Enter user email',
     inviteBtn:   'Invite',
+    suggestTitle:'Add from workspace',
+    suggestHint: 'Quick-pick people already in this workspace',
+    addToBoard:  'Add to board',
+    noSuggestions:'No more workspace members to add',
     roleLabel:   'Role',
     owner:       'Owner',
-    admin:       'Admin',
     member:      'Member',
     staff:       'Staff',
     remove:      'Remove',
@@ -105,6 +111,7 @@ export default function BoardMembersPanel({ boardId, workspaceId, lang = 'vi', o
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole]   = useState('member');
   const [inviting, setInviting]       = useState(false);
+  const [quickAddingId, setQuickAddingId] = useState(null);
   const [copied, setCopied]           = useState(false);
   const ref = useRef(null);
 
@@ -116,6 +123,21 @@ export default function BoardMembersPanel({ boardId, workspaceId, lang = 'vi', o
     (m) => (m.user?._id || m.user)?.toString() === user?._id?.toString()
       && m.role === 'admin'
   );
+
+  const boardMemberIds = new Set(
+    members.map((m) => (m.user?._id || m.user)?.toString()).filter(Boolean)
+  );
+
+  const workspaceCandidates = [
+    workspace?.owner ? { user: workspace.owner, role: 'admin' } : null,
+    ...((workspace?.members || []).map((m) => ({ user: m.user, role: m.role }))),
+  ]
+    .filter(Boolean)
+    .filter((m, index, list) => {
+      const memberId = (m.user?._id || m.user)?.toString();
+      if (!memberId || boardMemberIds.has(memberId)) return false;
+      return index === list.findIndex((item) => ((item.user?._id || item.user)?.toString() === memberId));
+    });
 
   // Tải danh sách members
   const loadMembers = async () => {
@@ -173,6 +195,28 @@ export default function BoardMembersPanel({ boardId, workspaceId, lang = 'vi', o
     setInviting(false);
   };
 
+  const handleQuickAdd = async (targetUserId) => {
+    if (!targetUserId) return;
+
+    if (!isWorkspaceAdmin) {
+      toast.error(l.noPermission);
+      return;
+    }
+
+    setQuickAddingId(targetUserId);
+    try {
+      await apiClient.post(`/boards/${boardId}/members`, {
+        userId: targetUserId,
+        role: inviteRole,
+      });
+      toast.success(l.inviteOk);
+      loadMembers();
+    } catch (err) {
+      toast.error(err?.message || l.inviteFail);
+    }
+    setQuickAddingId(null);
+  };
+
   // Xoá member
   const handleRemove = async (userId) => {
     if (!isWorkspaceAdmin) {
@@ -219,7 +263,7 @@ export default function BoardMembersPanel({ boardId, workspaceId, lang = 'vi', o
   const getRoleInfo = (role) => {
     const map = {
       owner:  { label: l.owner,  color: '#fbbf24' },
-      admin:  { label: l.admin,  color: '#60a5fa' },
+      admin:  { label: l.staff,  color: '#a78bfa' },
       staff:  { label: l.staff,  color: '#a78bfa' },
       member: { label: l.member, color: 'rgba(255,255,255,.4)' },
     };
@@ -333,6 +377,99 @@ export default function BoardMembersPanel({ boardId, workspaceId, lang = 'vi', o
               >
                 {inviting ? '...' : l.inviteBtn}
               </button>
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <p style={{
+                fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+                letterSpacing: '.08em', color: 'rgba(255,255,255,.42)', margin: '0 0 4px',
+              }}>
+                {l.suggestTitle}
+              </p>
+              <p style={{ fontSize: 11, color: 'rgba(255,255,255,.38)', margin: '0 0 8px' }}>
+                {l.suggestHint}
+              </p>
+
+              {workspaceCandidates.length === 0 ? (
+                <div style={{
+                  padding: '10px 12px',
+                  borderRadius: 10,
+                  border: '1px dashed rgba(255,255,255,.1)',
+                  background: 'rgba(255,255,255,.03)',
+                  color: 'rgba(255,255,255,.38)',
+                  fontSize: 12,
+                }}>
+                  {l.noSuggestions}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 180, overflowY: 'auto', paddingRight: 2 }}>
+                  {workspaceCandidates.map((candidate) => {
+                    const candidateUser = candidate.user;
+                    const candidateId = (candidateUser?._id || candidateUser)?.toString();
+                    const roleInfo = getRoleInfo(candidate.role);
+
+                    return (
+                      <div
+                        key={candidateId}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 10,
+                          padding: '8px 10px',
+                          borderRadius: 10,
+                          border: '1px solid rgba(255,255,255,.08)',
+                          background: 'rgba(255,255,255,.04)',
+                        }}
+                      >
+                        <Avatar name={candidateUser?.name} avatar={candidateUser?.avatar} size={32} />
+
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{
+                            color: 'white', fontSize: 12, fontWeight: 600,
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0,
+                          }}>
+                            {candidateUser?.name || candidateId}
+                          </p>
+                          <p style={{
+                            color: 'rgba(255,255,255,.4)', fontSize: 11,
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: '2px 0 0',
+                          }}>
+                            {candidateUser?.email || ''}
+                          </p>
+                        </div>
+
+                        <span style={{
+                          fontSize: 10, fontWeight: 700, color: roleInfo.color,
+                          background: `${roleInfo.color}20`, borderRadius: 999,
+                          padding: '2px 8px', whiteSpace: 'nowrap',
+                        }}>
+                          {roleInfo.label}
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={() => handleQuickAdd(candidateId)}
+                          disabled={quickAddingId === candidateId}
+                          style={{
+                            padding: '6px 10px',
+                            borderRadius: 8,
+                            border: 'none',
+                            background: 'linear-gradient(135deg,#10b981,#059669)',
+                            color: 'white',
+                            cursor: quickAddingId === candidateId ? 'wait' : 'pointer',
+                            fontSize: 11,
+                            fontWeight: 700,
+                            whiteSpace: 'nowrap',
+                            opacity: quickAddingId === candidateId ? 0.7 : 1,
+                          }}
+                        >
+                          {quickAddingId === candidateId ? '...' : l.addToBoard}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )}

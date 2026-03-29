@@ -142,7 +142,13 @@ exports.createBoard = asyncHandler(async (req, res, next) => {
 exports.getBoard = asyncHandler(async (req, res, next) => {
   const board = await Board.findById(req.params.id)
     .populate('workspace')
-    .populate({ path: 'lists', populate: { path: 'cards' } });
+    .populate({
+      path: 'lists',
+      populate: {
+        path: 'cards',
+        populate: { path: 'assignees', select: 'name email avatar' },
+      },
+    });
   if (!board) return next(new AppError('Board not found', 404));
   res.status(200).json({ success: true, data: board });
 });
@@ -190,7 +196,13 @@ exports.updateBoard = asyncHandler(async (req, res, next) => {
 
   const updated = await Board.findById(board._id)
     .populate('workspace')
-    .populate({ path: 'lists', populate: { path: 'cards' } });
+    .populate({
+      path: 'lists',
+      populate: {
+        path: 'cards',
+        populate: { path: 'assignees', select: 'name email avatar' },
+      },
+    });
 
   res.status(200).json({ success: true, data: updated });
 });

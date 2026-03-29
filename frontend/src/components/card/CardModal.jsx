@@ -6,7 +6,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import cardService  from '@services/cardService';
 import boardService from '@services/boardService';
-import aiService    from '@services/aiService';
 import { useUiStore } from '@store/uiStore';
 import toast from 'react-hot-toast';
 import { useTranslation } from '@hooks/useTranslation';
@@ -24,12 +23,13 @@ export default function CardModal({ cardId, boardId, onClose }) {
   const [isEditing,       setIsEditing]       = useState(false);
   const [form,            setForm]            = useState({ title: '', description: '', dueDate: '' });
   const [checklistText,   setChecklistText]   = useState('');
-  const [aiChecklist,     setAiChecklist]     = useState([]);
   const [moveTargets,     setMoveTargets]     = useState({});
   const [wsMembers,       setWsMembers]       = useState([]);
   const [loadingMembers,  setLoadingMembers]  = useState(false);
+  const [showAssigneePicker, setShowAssigneePicker] = useState(false);
   const [uploadingFile,   setUploadingFile]   = useState(false);
   const fileInputRef = useRef(null);
+  const assigneePickerRef = useRef(null);
 
   const { data: card, isLoading } = useQuery({
     queryKey: ['card', cardId],
@@ -82,6 +82,19 @@ export default function CardModal({ cardId, boardId, onClose }) {
       .finally(() => setLoadingMembers(false));
   }, [boardId]);
 
+  useEffect(() => {
+    if (!showAssigneePicker) return undefined;
+
+    const handleClickOutside = (event) => {
+      if (assigneePickerRef.current && !assigneePickerRef.current.contains(event.target)) {
+        setShowAssigneePicker(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showAssigneePicker]);
+
   const handleToggleAssignee = async (userId) => {
     const currentIds = card?.assignees?.map(a => a._id || a) || [];
     const isAssigned = currentIds.some(id => id?.toString() === userId?.toString());
@@ -127,12 +140,6 @@ export default function CardModal({ cardId, boardId, onClose }) {
       toast.success(t('moveChecklistItemSuccess'));
     },
     onError: err => toast.error(err?.message || t('moveChecklistItemError')),
-  });
-
-  const aiChecklistMutation = useMutation({
-    mutationFn: () => aiService.getChecklistSuggestions({ title: form.title, description: form.description }),
-    onSuccess: res => { setAiChecklist(res?.checklist || []); toast.success(t('aiSuggestedCount', { count: res?.checklist?.length || 0 })); },
-    onError:   err => toast.error(err?.message || t('aiChecklistFetchError')),
   });
 
   const deleteMutation = useMutation({
@@ -197,6 +204,8 @@ export default function CardModal({ cardId, boardId, onClose }) {
   const total     = checklist.length;
   const progress  = total > 0 ? Math.round((done / total) * 100) : 0;
   const attachments = card?.attachments || [];
+  const assignedIds = new Set((card?.assignees || []).map((a) => (a?._id || a)?.toString()).filter(Boolean));
+  const assignedMembers = wsMembers.filter((member) => assignedIds.has((member?._id || member)?.toString()));
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -237,14 +246,14 @@ export default function CardModal({ cardId, boardId, onClose }) {
           ) : wsMembers.length === 0 ? (
             <p style={{ fontSize: 12, color: 'rgba(255,255,255,.3)', fontStyle: 'italic' }}>{lang === 'vi' ? 'Chưa có thành viên' : 'No members'}</p>
           ) : (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {wsMembers.map((member) => {
+            <div style={{ position: 'relative' }} ref={assigneePickerRef}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                {assignedMembers.map((member) => {
                 const memberId   = member?._id || member;
                 const memberName = member?.name || String(memberId);
-                const isAssigned = (card?.assignees || []).some(a => (a?._id || a)?.toString() === memberId?.toString());
                 return (
                   <button key={String(memberId)} type="button" onClick={() => handleToggleAssignee(memberId)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 10px', borderRadius: 999, border: '1px solid', borderColor: isAssigned ? 'rgba(52,211,153,.5)' : 'rgba(255,255,255,.12)', background: isAssigned ? 'rgba(52,211,153,.15)' : 'rgba(255,255,255,.06)', cursor: 'pointer' }}>
+                    style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 10px', borderRadius: 999, border: '1px solid rgba(52,211,153,.5)', background: 'rgba(52,211,153,.15)', cursor: 'pointer' }}>
                     {member?.avatar ? (
                       <img src={member.avatar} alt={memberName} style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover' }} />
                     ) : (
@@ -252,17 +261,121 @@ export default function CardModal({ cardId, boardId, onClose }) {
                         {memberName[0].toUpperCase()}
                       </div>
                     )}
-                    <span style={{ fontSize: 12, fontWeight: 500, color: isAssigned ? '#6ee7b7' : 'rgba(255,255,255,.75)', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: 12, fontWeight: 500, color: '#6ee7b7', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {memberName}
                     </span>
-                    {isAssigned && (
-                      <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-                        <path d="M1.5 5.5L4 8L9.5 2.5" stroke="#34d399" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    )}
                   </button>
                 );
               })}
+
+                <button
+                  type="button"
+                  onClick={() => setShowAssigneePicker((prev) => !prev)}
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: '999px',
+                    border: '1px dashed rgba(255,255,255,.2)',
+                    background: showAssigneePicker ? 'rgba(52,211,153,.18)' : 'rgba(255,255,255,.05)',
+                    color: showAssigneePicker ? '#6ee7b7' : 'rgba(255,255,255,.7)',
+                    fontSize: 20,
+                    lineHeight: 1,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                  aria-label={lang === 'vi' ? 'Chọn thành viên phụ trách' : 'Pick assignees'}
+                  title={lang === 'vi' ? 'Chọn thành viên phụ trách' : 'Pick assignees'}
+                >
+                  +
+                </button>
+              </div>
+
+              {assignedMembers.length === 0 && (
+                <p style={{ fontSize: 12, color: 'rgba(255,255,255,.35)', fontStyle: 'italic', marginTop: 10 }}>
+                  {lang === 'vi' ? 'Chưa giao cho ai. Bấm dấu cộng để chọn người phụ trách.' : 'No assignees yet. Click plus to pick people.'}
+                </p>
+              )}
+
+              {showAssigneePicker && (
+                <div style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 10px)',
+                  left: 0,
+                  width: 'min(360px, 100%)',
+                  borderRadius: 16,
+                  border: '1px solid rgba(255,255,255,.12)',
+                  background: 'linear-gradient(160deg,rgba(13,21,38,.98),rgba(8,28,24,.98))',
+                  boxShadow: '0 18px 40px rgba(0,0,0,.45)',
+                  padding: 12,
+                  zIndex: 30,
+                }}>
+                  <div style={{ marginBottom: 8, fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'rgba(167,243,208,.7)' }}>
+                    {lang === 'vi' ? 'Chọn người phụ trách' : 'Pick assignees'}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 220, overflowY: 'auto' }}>
+                    {wsMembers.map((member) => {
+                      const memberId   = member?._id || member;
+                      const memberName = member?.name || String(memberId);
+                      const isAssigned = assignedIds.has(memberId?.toString());
+                      return (
+                        <button
+                          key={`picker-${String(memberId)}`}
+                          type="button"
+                          onClick={() => handleToggleAssignee(memberId)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 10,
+                            width: '100%',
+                            padding: '8px 10px',
+                            borderRadius: 12,
+                            border: '1px solid',
+                            borderColor: isAssigned ? 'rgba(52,211,153,.45)' : 'rgba(255,255,255,.08)',
+                            background: isAssigned ? 'rgba(52,211,153,.12)' : 'rgba(255,255,255,.04)',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                          }}
+                        >
+                          {member?.avatar ? (
+                            <img src={member.avatar} alt={memberName} style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+                          ) : (
+                            <div style={{ width: 28, height: 28, borderRadius: '50%', background: `hsl(${memberName.charCodeAt(0)*17%360},60%,42%)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: 'white', flexShrink: 0 }}>
+                              {memberName[0].toUpperCase()}
+                            </div>
+                          )}
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: 'white', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {memberName}
+                            </div>
+                            <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {member?.email || ''}
+                            </div>
+                          </div>
+                          <div style={{
+                            width: 18,
+                            height: 18,
+                            borderRadius: '50%',
+                            border: `1px solid ${isAssigned ? 'rgba(52,211,153,.8)' : 'rgba(255,255,255,.2)'}`,
+                            background: isAssigned ? '#34d399' : 'transparent',
+                            color: isAssigned ? '#042f2e' : 'transparent',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                            fontSize: 12,
+                            fontWeight: 700,
+                          }}>
+                            ✓
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -405,57 +518,6 @@ export default function CardModal({ cardId, boardId, onClose }) {
           {total > 0 && (
             <div style={{ height: 5, borderRadius: 99, background: 'rgba(255,255,255,.1)', marginBottom: 12, overflow: 'hidden' }}>
               <div style={{ height: '100%', width: `${progress}%`, borderRadius: 99, background: progress === 100 ? '#22c55e' : '#3b82f6', transition: 'width .3s' }} />
-            </div>
-          )}
-          <div className="flex flex-wrap gap-2 mb-3">
-            <button type="button" className="btn btn-secondary btn-sm"
-              onClick={() => aiChecklistMutation.mutate()}
-              disabled={aiChecklistMutation.isPending || !form.title.trim()}>
-              {aiChecklistMutation.isPending ? t('aiSuggestingChecklist') : t('aiSuggestChecklist')}
-            </button>
-            {aiChecklist.length > 0 && (
-              <button type="button" className="btn btn-primary btn-sm"
-                onClick={async () => {
-                  const itemsToAdd = aiChecklist.filter(item => item.trim());
-                  if (itemsToAdd.length === 0) {
-                    setAiChecklist([]);
-                    return;
-                  }
-                  for (const item of itemsToAdd) await cardService.addChecklistItem(cardId, item);
-                  queryClient.invalidateQueries(['card', cardId]);
-                  setAiChecklist([]);
-                  toast.success(t('addedAiChecklistSuccess'));
-                }}>
-                {t('addAllSuggestions')}
-              </button>
-            )}
-          </div>
-          {aiChecklist.length > 0 && (
-            <div className="mb-4 rounded-xl border border-white/10 bg-white/5 p-3 space-y-2">
-              <div className="text-xs text-emerald-100/60 mb-2">
-                {lang === 'vi' ? 'Bạn có thể chỉnh sửa các đề xuất dưới đây trước khi thêm:' : 'You can edit these suggestions before adding:'}
-              </div>
-              {aiChecklist.map((item, idx) => (
-                <div key={idx} className="flex items-center gap-2">
-                  <span className="text-emerald-50/50">•</span>
-                  <input
-                    className="input min-w-0 flex-1 py-1 text-sm bg-black/20 border-transparent hover:border-white/10 focus:border-emerald-500/50"
-                    value={item}
-                    onChange={e => {
-                      const newList = [...aiChecklist];
-                      newList[idx] = e.target.value;
-                      setAiChecklist(newList);
-                    }}
-                  />
-                  <button type="button" className="text-red-400 hover:text-red-300 px-2"
-                    onClick={() => {
-                      const newList = aiChecklist.filter((_, i) => i !== idx);
-                      setAiChecklist(newList);
-                    }}>
-                    ✕
-                  </button>
-                </div>
-              ))}
             </div>
           )}
           <div className="space-y-2 mb-4">

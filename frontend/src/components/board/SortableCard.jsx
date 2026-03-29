@@ -32,6 +32,7 @@ export function SortableCard({ card, onClick }) {
   const commentCount = card.comments?.length || 0;
   const attachmentCount = card.attachments?.length || 0;
   const descriptionPreview = card.description?.trim();
+  const assignees = Array.isArray(card.assignees) ? card.assignees.slice(0, 4) : [];
 
   return (
     <div
@@ -138,6 +139,80 @@ export function SortableCard({ card, onClick }) {
                 />
               </svg>
               {attachmentCount}
+            </span>
+          )}
+        </div>
+      )}
+
+      {assignees.length > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 8,
+            marginTop: 10,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            {assignees.map((assignee, index) => {
+              const name = assignee?.name || assignee?.email || '?';
+              const avatar = assignee?.avatar;
+              return avatar ? (
+                <img
+                  key={assignee?._id || `${name}-${index}`}
+                  src={avatar}
+                  alt={name}
+                  title={name}
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: '50%',
+                    objectFit: 'cover',
+                    border: '2px solid rgba(15,23,42,.9)',
+                    marginLeft: index === 0 ? 0 : -6,
+                    boxShadow: '0 2px 6px rgba(0,0,0,.18)',
+                    background: '#0f172a',
+                  }}
+                />
+              ) : (
+                <div
+                  key={assignee?._id || `${name}-${index}`}
+                  title={name}
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: '50%',
+                    border: '2px solid rgba(15,23,42,.9)',
+                    marginLeft: index === 0 ? 0 : -6,
+                    background: `hsl(${(name.charCodeAt(0) * 17) % 360},60%,42%)`,
+                    color: 'white',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    boxShadow: '0 2px 6px rgba(0,0,0,.18)',
+                  }}
+                >
+                  {name[0].toUpperCase()}
+                </div>
+              );
+            })}
+          </div>
+
+          {card.assignees.length > 4 && (
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                color: '#94a3b8',
+                background: 'rgba(148,163,184,.14)',
+                borderRadius: 999,
+                padding: '2px 7px',
+              }}
+            >
+              +{card.assignees.length - 4}
             </span>
           )}
         </div>
