@@ -69,11 +69,21 @@ const cardSchema = new mongoose.Schema(
         },
       },
     ],
+    cover: {
+      color: { type: String, default: null },
+    },
+    watchers: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+      },
+    ],
     attachments: [
       {
         name: String,
         url: String,
-        type: String, // image, pdf, etc.
+        type: String,
+        publicId: String,
         uploadedBy: {
           type: mongoose.Schema.Types.ObjectId,
           ref: 'User',

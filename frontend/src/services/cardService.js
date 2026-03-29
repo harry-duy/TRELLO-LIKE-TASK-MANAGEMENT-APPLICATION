@@ -64,6 +64,21 @@ const cardService = {
     const response = await apiClient.put(`/cards/${cardId}/restore`);
     return response?.data ?? response;
   },
+
+  duplicate: async (cardId) => {
+    const response = await apiClient.post(`/cards/${cardId}/duplicate`);
+    return response?.data ?? response;
+  },
+
+  toggleWatch: async (cardId) => {
+    const response = await apiClient.post(`/cards/${cardId}/watch`);
+    return response?.data ?? response;
+  },
+
+  getActivity: async (cardId) => {
+    const response = await apiClient.get(`/cards/${cardId}/activity`);
+    return response?.data ?? response;
+  },
 };
 
 export default cardService;

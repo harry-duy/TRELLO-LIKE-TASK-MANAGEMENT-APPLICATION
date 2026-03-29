@@ -108,6 +108,7 @@ exports.moveCard = asyncHandler(async (req, res, next) => {
   const { listId, position, boardId } = req.body;
   const card = await Card.findById(id);
   if (!card) return next(new AppError('Card not found', 404));
+  if (boardId) await ensureBoardAccess(boardId, req.user);
   const oldListId = card.list;
   await card.moveToList(listId, position);
   await Activity.log({
@@ -325,7 +326,7 @@ exports.restoreCard = asyncHandler(async (req, res, next) => {
 
   await Activity.log({
     actor: req.user._id,
-    action: 'card_updated',
+    action: 'card_restored',
     target: card._id,
     targetType: 'Card',
     board: card.board,
@@ -342,6 +343,71 @@ exports.deleteCard = asyncHandler(async (req, res, next) => {
   if (!card.isArchived) return next(new AppError('Card must be archived before it can be deleted', 400));
   await Card.deleteOne({ _id: req.params.id });
   res.status(200).json({ success: true, data: { id: req.params.id } });
+});
+
+// @desc    Duplicate a card
+// @route   POST /api/cards/:id/duplicate
+exports.duplicateCard = asyncHandler(async (req, res, next) => {
+  const source = await Card.findById(req.params.id);
+  if (!source) return next(new AppError('Card not found', 404));
+
+  const count = await Card.countDocuments({ list: source.list, isArchived: false });
+  const newCard = await Card.create({
+    title:       `${source.title} (copy)`,
+    description: source.description,
+    list:        source.list,
+    board:       source.board,
+    position:    count,
+    labels:      source.labels,
+    dueDate:     source.dueDate,
+    checklist:   source.checklist.map(item => ({
+      text:      item.text,
+      completed: false,
+    })),
+    createdBy: req.user._id,
+  });
+
+  await Activity.log({
+    actor: req.user._id, action: 'card_created',
+    target: newCard._id, targetType: 'Card', board: source.board,
+  });
+
+  res.status(201).json({ success: true, data: newCard });
+});
+
+// @desc    Toggle watch/unwatch a card
+// @route   POST /api/cards/:id/watch
+exports.toggleWatcher = asyncHandler(async (req, res, next) => {
+  const card = await Card.findById(req.params.id);
+  if (!card) return next(new AppError('Card not found', 404));
+
+  const userId = req.user._id.toString();
+  const idx = (card.watchers || []).findIndex(w => w.toString() === userId);
+  let isWatching;
+  if (idx > -1) {
+    card.watchers.splice(idx, 1);
+    isWatching = false;
+  } else {
+    card.watchers.push(req.user._id);
+    isWatching = true;
+  }
+  await card.save();
+
+  res.status(200).json({ success: true, isWatching, data: card.watchers });
+});
+
+// @desc    Get activity log for a card
+// @route   GET /api/cards/:id/activity
+exports.getCardActivity = asyncHandler(async (req, res, next) => {
+  const card = await Card.findById(req.params.id).select('board');
+  if (!card) return next(new AppError('Card not found', 404));
+
+  const activities = await Activity.find({ target: req.params.id, targetType: 'Card' })
+    .populate('actor', 'name email avatar')
+    .sort({ createdAt: -1 })
+    .limit(50);
+
+  res.status(200).json({ success: true, data: activities });
 });
 
 // ─────────────────────────────────────────────────────────────

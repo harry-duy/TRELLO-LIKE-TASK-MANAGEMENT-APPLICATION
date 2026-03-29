@@ -48,7 +48,7 @@ export default function ArchivePanel({ boardId, lang = 'vi', onClose }) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
 
-  const { data: archivedCards = [], isLoading } = useQuery({
+  const { data: archivedCards = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['archivedCards', boardId],
     queryFn:  () => cardService.getArchived(boardId),
     enabled:  !!boardId,
@@ -155,6 +155,16 @@ export default function ArchivePanel({ boardId, lang = 'vi', onClose }) {
         <div style={{ maxHeight: 400, overflowY: 'auto', padding: '0 20px 20px' }}>
           {isLoading ? (
             <p style={{ textAlign: 'center', color: 'rgba(255,255,255,.4)', fontSize: 13, padding: '24px 0' }}>{l.loading}</p>
+          ) : isError ? (
+            <div style={{ textAlign: 'center', padding: '24px 16px' }}>
+              <p style={{ margin: 0, fontSize: 13, color: '#f87171' }}>
+                {lang === 'vi' ? 'Không thể tải dữ liệu.' : 'Failed to load.'}
+              </p>
+              <button type="button" onClick={() => refetch()}
+                style={{ marginTop: 8, padding: '4px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,.15)', background: 'rgba(255,255,255,.07)', color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 12 }}>
+                {lang === 'vi' ? 'Thử lại' : 'Retry'}
+              </button>
+            </div>
           ) : filtered.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '32px 16px' }}>
               <div style={{ fontSize: 48, marginBottom: 12 }}>📭</div>
