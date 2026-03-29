@@ -392,7 +392,6 @@ export default function BoardMembersPanel({ boardId, workspaceId, lang = 'vi', o
                       }}
                     >
                       <option value="member">{l.member}</option>
-                      <option value="admin">{l.admin}</option>
                       <option value="staff">{l.staff}</option>
                     </select>
                   ) : (

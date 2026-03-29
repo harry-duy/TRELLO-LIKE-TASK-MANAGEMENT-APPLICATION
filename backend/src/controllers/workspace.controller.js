@@ -318,8 +318,8 @@ exports.updateMemberRole = asyncHandler(async (req, res, next) => {
   const { workspaceId, userId } = req.params;
   const { role } = req.body;
 
-  if (!['admin', 'member', 'staff'].includes(role)) {
-    return next(new AppError('Role must be admin, member, or staff', 400));
+  if (!['member', 'staff'].includes(role)) {
+    return next(new AppError('Role must be member or staff', 400));
   }
 
   const workspace = await Workspace.findById(workspaceId);
