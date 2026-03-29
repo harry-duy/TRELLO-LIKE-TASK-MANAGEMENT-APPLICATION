@@ -139,7 +139,7 @@ const checkWorkspacePermission = (requiredRole) => {
       return next(new AppError('You are not a member of this workspace', 403));
     }
 
-    const roleHierarchy = { admin: 2, member: 1 };
+    const roleHierarchy = { admin: 2, member: 1, staff: 1 };
     const memberLevel = roleHierarchy[member.role] || 0;
     const requiredLevel = roleHierarchy[requiredRole] || 0;
 
@@ -153,10 +153,39 @@ const checkWorkspacePermission = (requiredRole) => {
   });
 };
 
+const canManageBoard = asyncHandler(async (req, res, next) => {
+  const board = req.board;
+  const workspace = req.workspace;
+  const userId = req.user._id.toString();
+
+  if (req.user.role === 'admin') {
+    return next();
+  }
+
+  if (board.createdBy && board.createdBy.toString() === userId) {
+    return next();
+  }
+
+  if (workspace.owner.toString() === userId) {
+    return next();
+  }
+
+  const member = workspace.members.find(
+    (m) => m.user.toString() === userId
+  );
+
+  if (member && member.role === 'admin') {
+    return next();
+  }
+
+  return next(new AppError('You do not have permission to manage this board', 403));
+});
+
 module.exports = {
   protect,
   restrictTo,
   isWorkspaceMember,
   isBoardMember,
   checkWorkspacePermission,
+  canManageBoard,
 };
