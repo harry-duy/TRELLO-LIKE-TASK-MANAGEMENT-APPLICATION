@@ -113,6 +113,16 @@ export default function AdminDashboard() {
     onSuccess: () => { toast.success('Đã cập nhật thành viên workspace'); refreshWorkspaces(); },
     onError: err => toast.error(err?.message || 'Không thể thêm thành viên'),
   });
+  const updateWorkspaceMemberRoleMutation = useMutation({
+    mutationFn: ({ workspaceId, userId, role }) => adminService.updateWorkspaceMemberRole(workspaceId, userId, role),
+    onSuccess: () => { toast.success('Đã cập nhật role workspace'); refreshWorkspaces(); },
+    onError: err => toast.error(err?.message || 'Không thể cập nhật role workspace'),
+  });
+  const transferOwnershipMutation = useMutation({
+    mutationFn: ({ workspaceId, userId }) => adminService.transferWorkspaceOwnership(workspaceId, userId),
+    onSuccess: () => { toast.success('Đã chuyển ownership workspace'); refreshWorkspaces(); },
+    onError: err => toast.error(err?.message || 'Không thể chuyển ownership'),
+  });
   const removeMemberMutation = useMutation({
     mutationFn: ({ workspaceId, userId }) => adminService.removeWorkspaceMember(workspaceId, userId),
     onSuccess: () => { toast.success('Đã xoá thành viên'); refreshWorkspaces(); },
@@ -141,8 +151,20 @@ export default function AdminDashboard() {
   const handleAddMember = (workspaceId) => {
     const userId = window.prompt('Nhập User ID cần thêm:');
     if (!userId) return;
-    const role = window.prompt('Role (admin/member):', 'member') || 'member';
+    const role = window.prompt('Role (admin/member/staff):', 'member') || 'member';
     addMemberMutation.mutate({ workspaceId, payload: { userId: userId.trim(), role: role.trim() } });
+  };
+
+  const handleUpdateWorkspaceMemberRole = (workspaceId, userId, currentRole) => {
+    const role = window.prompt('Role mới (admin/member/staff):', currentRole || 'member');
+    if (!role) return;
+    updateWorkspaceMemberRoleMutation.mutate({ workspaceId, userId, role: role.trim() });
+  };
+
+  const handleTransferOwnership = (workspaceId, currentOwnerId) => {
+    const userId = window.prompt('Nhập User ID member mới làm owner:', currentOwnerId || '');
+    if (!userId) return;
+    transferOwnershipMutation.mutate({ workspaceId, userId: userId.trim() });
   };
 
   const handleDeleteWorkspace = (workspaceId, name) => {
@@ -491,6 +513,9 @@ export default function AdminDashboard() {
                   <button type="button" className="btn btn-secondary" onClick={() => handleAddMember(ws._id)} disabled={addMemberMutation.isPending}>
                     Thêm member
                   </button>
+                  <button type="button" className="btn btn-secondary" onClick={() => handleTransferOwnership(ws._id, ws.owner?._id)} disabled={transferOwnershipMutation.isPending}>
+                    Chuyển owner
+                  </button>
                   <button type="button" className="btn bg-red-500 hover:bg-red-600 text-white" onClick={() => handleDeleteWorkspace(ws._id, ws.name)} disabled={deleteWorkspaceMutation.isPending}>
                     Xóa workspace
                   </button>
@@ -500,7 +525,14 @@ export default function AdminDashboard() {
                 {(ws.members || []).map(m => (
                   <div key={m._id || m.user?._id} className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs">
                     <span>{m.user?.email || m.user}</span>
-                    <span className="text-emerald-100/70">({m.role})</span>
+                    <button
+                      type="button"
+                      className="text-emerald-100/70 hover:text-white"
+                      onClick={() => handleUpdateWorkspaceMemberRole(ws._id, m.user?._id || m.user, m.role)}
+                      disabled={updateWorkspaceMemberRoleMutation.isPending}
+                    >
+                      ({m.role})
+                    </button>
                     <button type="button" className="text-red-300 hover:text-red-200"
                       onClick={() => removeMemberMutation.mutate({ workspaceId: ws._id, userId: m.user?._id || m.user })}
                       disabled={removeMemberMutation.isPending}>✕</button>

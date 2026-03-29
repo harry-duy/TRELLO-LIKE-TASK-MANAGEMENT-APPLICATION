@@ -49,6 +49,14 @@ const adminService = {
     return apiClient.post(`/admin/workspaces/${workspaceId}/members`, payload);
   },
 
+  updateWorkspaceMemberRole: async (workspaceId, userId, role) => {
+    return apiClient.patch(`/workspaces/${workspaceId}/members/${userId}/role`, { role });
+  },
+
+  transferWorkspaceOwnership: async (workspaceId, userId) => {
+    return apiClient.patch(`/workspaces/${workspaceId}/transfer-ownership`, { userId });
+  },
+
   removeWorkspaceMember: async (workspaceId, userId) => {
     return apiClient.delete(`/admin/workspaces/${workspaceId}/members/${userId}`);
   },

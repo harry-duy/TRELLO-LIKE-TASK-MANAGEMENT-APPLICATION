@@ -325,3 +325,49 @@ exports.updateMemberRole = asyncHandler(async (req, res, next) => {
     data:    { workspaceId, userId, role },
   });
 });
+
+exports.transferOwnership = asyncHandler(async (req, res, next) => {
+  const { workspaceId } = req.params;
+  const { userId } = req.body;
+
+  if (!userId) return next(new AppError('userId is required', 400));
+
+  const workspace = await Workspace.findById(workspaceId);
+  if (!workspace) return next(new AppError('Workspace not found', 404));
+
+  if (!isWorkspaceOwner(workspace, req.user._id, req.user.role)) {
+    return next(new AppError('Only workspace owner can transfer ownership', 403));
+  }
+
+  if (workspace.owner.toString() === userId) {
+    return next(new AppError('User is already the workspace owner', 400));
+  }
+
+  const newOwnerMember = workspace.members.find((m) => m.user.toString() === userId);
+  if (!newOwnerMember) {
+    return next(new AppError('New owner must already be a workspace member', 400));
+  }
+
+  const oldOwnerId = workspace.owner.toString();
+  workspace.owner = userId;
+  newOwnerMember.role = 'admin';
+
+  const oldOwnerMember = workspace.members.find((m) => m.user.toString() === oldOwnerId);
+  if (oldOwnerMember) {
+    oldOwnerMember.role = 'admin';
+  } else {
+    workspace.members.push({ user: oldOwnerId, role: 'admin' });
+  }
+
+  await workspace.save();
+
+  const updated = await Workspace.findById(workspaceId)
+    .populate('owner', 'name email avatar role')
+    .populate('members.user', 'name email avatar role');
+
+  res.status(200).json({
+    success: true,
+    message: 'Workspace ownership transferred successfully',
+    data: updated,
+  });
+});
