@@ -298,11 +298,48 @@ exports.moveChecklistItem = asyncHandler(async (req, res, next) => {
   });
 });
 
-// @desc    Delete card
+// @desc    Get archived cards for a board
+// @route   GET /api/cards/archived
+exports.getArchivedCards = asyncHandler(async (req, res, next) => {
+  const { boardId } = req.query;
+  if (!boardId) return next(new AppError('boardId is required', 400));
+  await ensureBoardAccess(boardId, req.user);
+
+  const cards = await Card.find({ board: boardId, isArchived: true })
+    .populate('list', 'name')
+    .populate('assignees', 'name email avatar')
+    .sort({ updatedAt: -1 });
+
+  res.status(200).json({ success: true, data: cards });
+});
+
+// @desc    Restore archived card to its original list
+// @route   PUT /api/cards/:id/restore
+exports.restoreCard = asyncHandler(async (req, res, next) => {
+  const card = await Card.findById(req.params.id);
+  if (!card) return next(new AppError('Card not found', 404));
+  if (!card.isArchived) return next(new AppError('Card is not archived', 400));
+
+  card.isArchived = false;
+  await card.save();
+
+  await Activity.log({
+    actor: req.user._id,
+    action: 'card_updated',
+    target: card._id,
+    targetType: 'Card',
+    board: card.board,
+  });
+
+  res.status(200).json({ success: true, data: card });
+});
+
+// @desc    Delete card (must be archived first)
 // @route   DELETE /api/cards/:id
 exports.deleteCard = asyncHandler(async (req, res, next) => {
   const card = await Card.findById(req.params.id);
   if (!card) return next(new AppError('Card not found', 404));
+  if (!card.isArchived) return next(new AppError('Card must be archived before it can be deleted', 400));
   await Card.deleteOne({ _id: req.params.id });
   res.status(200).json({ success: true, data: { id: req.params.id } });
 });

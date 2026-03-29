@@ -54,6 +54,16 @@ const cardService = {
     });
     return response?.data ?? response;
   },
+
+  getArchived: async (boardId) => {
+    const response = await apiClient.get('/cards/archived', { params: { boardId } });
+    return response?.data ?? response;
+  },
+
+  restore: async (cardId) => {
+    const response = await apiClient.put(`/cards/${cardId}/restore`);
+    return response?.data ?? response;
+  },
 };
 
 export default cardService;
