@@ -107,6 +107,7 @@ export default function BoardMembersPanel({ boardId, workspaceId, lang = 'vi', o
   const { user } = useAuthStore();
   const [workspace, setWorkspace]     = useState(null);
   const [members, setMembers]         = useState([]);
+  const [boardMembers, setBoardMembers] = useState([]);
   const [loading, setLoading]         = useState(true);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole]   = useState('member');
@@ -115,27 +116,31 @@ export default function BoardMembersPanel({ boardId, workspaceId, lang = 'vi', o
   const [copied, setCopied]           = useState(false);
   const ref = useRef(null);
 
-  // Kiểm tra user hiện tại có phải owner hoặc workspace admin không
+  // Kiểm tra user hiện tại có phải owner hoặc workspace admin/staff không
   const isOwner = workspace?.owner?._id?.toString() === user?._id?.toString()
     || workspace?.owner?.toString() === user?._id?.toString();
 
   const isWorkspaceAdmin = isOwner || (workspace?.members || []).some(
     (m) => (m.user?._id || m.user)?.toString() === user?._id?.toString()
-      && m.role === 'admin'
+      && ['admin', 'staff'].includes(m.role)
   );
 
+  // Chỉ lấy ID của những người đã là board member thực sự (từ board.members API)
   const boardMemberIds = new Set(
-    members.map((m) => (m.user?._id || m.user)?.toString()).filter(Boolean)
+    boardMembers.map((m) => (m.user?._id || m.user)?.toString()).filter(Boolean)
   );
+
+  // Thêm workspace owner vào boardMemberIds vì owner luôn có quyền truy cập
+  const ownerId = (workspace?.owner?._id || workspace?.owner)?.toString();
+  if (ownerId) boardMemberIds.add(ownerId);
 
   const workspaceCandidates = [
-    workspace?.owner ? { user: workspace.owner, role: 'admin' } : null,
     ...((workspace?.members || []).map((m) => ({ user: m.user, role: m.role }))),
   ]
-    .filter(Boolean)
     .filter((m, index, list) => {
       const memberId = (m.user?._id || m.user)?.toString();
       if (!memberId || boardMemberIds.has(memberId)) return false;
+      // dedup
       return index === list.findIndex((item) => ((item.user?._id || item.user)?.toString() === memberId));
     });
 
@@ -147,21 +152,30 @@ export default function BoardMembersPanel({ boardId, workspaceId, lang = 'vi', o
         apiClient.get(`/workspaces/${workspaceId}`),
         apiClient.get(`/boards/${boardId}/members`),
       ]);
-      const ws  = wsRes?.data || wsRes;
-      const boardMembers = boardMembersRes?.data || boardMembersRes;
-      setWorkspace(ws);
+      const ws = wsRes?.data ?? wsRes;
+      const rawBoardMembers = Array.isArray(boardMembersRes?.data)
+        ? boardMembersRes.data
+        : Array.isArray(boardMembersRes)
+          ? boardMembersRes
+          : [];
 
-      const ownerId = (ws.owner?._id || ws.owner)?.toString();
-      const normalizedBoardMembers = Array.isArray(boardMembers)
-        ? boardMembers.filter((m) => (m.user?._id || m.user)?.toString() !== ownerId)
-        : [];
+      setWorkspace(ws);
+      setBoardMembers(rawBoardMembers);
+
+      // Danh sách hiển thị trong member list: owner + board members (không trùng owner)
+      const ownerIdStr = (ws.owner?._id || ws.owner)?.toString();
+      const nonOwnerBoardMembers = rawBoardMembers.filter(
+        (m) => (m.user?._id || m.user)?.toString() !== ownerIdStr
+      );
 
       setMembers([
         { user: ws.owner, role: 'owner' },
-        ...normalizedBoardMembers,
+        ...nonOwnerBoardMembers,
       ]);
-    } catch {
+    } catch (err) {
+      console.error('[BoardMembersPanel] loadMembers error:', err);
       setMembers([]);
+      setBoardMembers([]);
     }
     setLoading(false);
   };
