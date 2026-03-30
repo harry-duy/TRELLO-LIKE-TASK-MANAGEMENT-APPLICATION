@@ -7,6 +7,7 @@ const Workspace = require('../models/workspace.model');
 const List      = require('../models/list.model');
 const Card      = require('../models/card.model');
 const Activity  = require('../models/activity.model');
+const User      = require('../models/user.model');
 const { asyncHandler, AppError } = require('../middleware/errorHandler');
 const notify    = require('../utils/notifyHelper');
 
@@ -141,7 +142,16 @@ exports.createBoard = asyncHandler(async (req, res, next) => {
 exports.getBoard = asyncHandler(async (req, res, next) => {
   const board = await Board.findById(req.params.id)
     .populate('workspace')
-    .populate({ path: 'lists', populate: { path: 'cards' } });
+    .populate({
+      path: 'lists',
+      match: { isArchived: false },
+      populate: {
+        path: 'cards',
+        match: { isArchived: false },
+        options: { sort: { position: 1 } },
+        populate: { path: 'assignees', select: 'name email avatar' },
+      },
+    });
   if (!board) return next(new AppError('Board not found', 404));
   res.status(200).json({ success: true, data: board });
 });
@@ -189,7 +199,16 @@ exports.updateBoard = asyncHandler(async (req, res, next) => {
 
   const updated = await Board.findById(board._id)
     .populate('workspace')
-    .populate({ path: 'lists', populate: { path: 'cards' } });
+    .populate({
+      path: 'lists',
+      match: { isArchived: false },
+      populate: {
+        path: 'cards',
+        match: { isArchived: false },
+        options: { sort: { position: 1 } },
+        populate: { path: 'assignees', select: 'name email avatar' },
+      },
+    });
 
   res.status(200).json({ success: true, data: updated });
 });
@@ -238,4 +257,102 @@ exports.toggleStar = asyncHandler(async (req, res, next) => {
     isStarred: !isStarred,
     data: { _id: board._id, starredBy: board.starredBy },
   });
+});
+
+exports.getBoardMembers = asyncHandler(async (req, res, next) => {
+  const board = await Board.findById(req.params.id)
+    .populate('members.user', 'name email avatar role')
+    .populate('createdBy', 'name email avatar role');
+
+  if (!board) return next(new AppError('Board not found', 404));
+
+  const members = board.members || [];
+  res.status(200).json({ success: true, data: members });
+});
+
+exports.addBoardMember = asyncHandler(async (req, res, next) => {
+  const board = await Board.findById(req.params.id).populate('workspace');
+  if (!board) return next(new AppError('Board not found', 404));
+
+  const { email, userId, role = 'member' } = req.body;
+  const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+
+  if (!normalizedEmail && !userId) {
+    return next(new AppError('Email or userId is required', 400));
+  }
+
+  if (!['member', 'staff'].includes(role)) {
+    return next(new AppError('Role must be member or staff', 400));
+  }
+
+  const workspace = await Workspace.findById(board.workspace._id || board.workspace)
+    .populate('owner', 'name email avatar role')
+    .populate('members.user', 'name email avatar role isActive');
+
+  if (!workspace) {
+    return next(new AppError('Workspace not found', 404));
+  }
+
+  const actorId = req.user._id.toString();
+  const workspaceMember = (workspace.members || []).find((m) => {
+    const memberId = (m.user?._id || m.user)?.toString();
+    return memberId === actorId;
+  });
+  const canManage = req.user.role === 'admin'
+    || (workspace.owner?._id || workspace.owner).toString() === actorId
+    || ['admin', 'staff'].includes(workspaceMember?.role);
+
+  if (!canManage) {
+    return next(new AppError('You do not have permission to manage this board', 403));
+  }
+
+  const targetUser = userId
+    ? await User.findById(userId).select('name email avatar role isActive')
+    : await User.findOne({ email: normalizedEmail }).select('name email avatar role isActive');
+
+  if (!targetUser) return next(new AppError('User not found', 404));
+  if (!targetUser.isActive) return next(new AppError('This user account is inactive', 400));
+
+  const inWorkspace = (workspace.owner?._id || workspace.owner).toString() === targetUser._id.toString()
+    || (workspace.members || []).some((m) => {
+      const memberId = (m.user?._id || m.user)?.toString();
+      return memberId === targetUser._id.toString();
+    });
+
+  if (!inWorkspace) {
+    return next(new AppError('User must be a workspace member before being added to the board', 400));
+  }
+
+  const existing = (board.members || []).find((m) => m.user.toString() === targetUser._id.toString());
+  if (existing) {
+    existing.role = role;
+  } else {
+    board.members.push({ user: targetUser._id, role });
+  }
+
+  await board.save();
+  const updated = await Board.findById(board._id).populate('members.user', 'name email avatar role');
+  res.status(200).json({ success: true, data: updated.members });
+});
+
+exports.removeBoardMember = asyncHandler(async (req, res, next) => {
+  const board = await Board.findById(req.params.id).populate('workspace');
+  if (!board) return next(new AppError('Board not found', 404));
+
+  const workspace = await Workspace.findById(board.workspace._id || board.workspace).select('owner members');
+  const actorId = req.user._id.toString();
+  const workspaceMember = (workspace.members || []).find((m) => m.user.toString() === actorId);
+  const canManage = req.user.role === 'admin'
+    || workspace.owner.toString() === actorId
+    || ['admin', 'staff'].includes(workspaceMember?.role);
+
+  if (!canManage) {
+    return next(new AppError('You do not have permission to manage this board', 403));
+  }
+
+  const userId = req.params.userId;
+  board.members = (board.members || []).filter((m) => m.user.toString() !== userId);
+  await board.save();
+
+  res.status(200).json({ success: true, data: { id: userId } });
 });

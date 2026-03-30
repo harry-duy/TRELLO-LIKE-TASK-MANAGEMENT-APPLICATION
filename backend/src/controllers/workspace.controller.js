@@ -74,13 +74,35 @@ exports.createWorkspace = asyncHandler(async (req, res, next) => {
 // ─────────────────────────────────────────────────────────────────────────────
 exports.getWorkspace = asyncHandler(async (req, res, next) => {
   const workspace = await Workspace.findById(req.params.workspaceId)
-    .populate('owner',          'name email avatar')
-    .populate('members.user',   'name email avatar')
-    .populate('boards');
+    .populate('owner', 'name email avatar')
+    .populate('members.user', 'name email avatar');
 
   if (!workspace) return next(new AppError('Workspace not found', 404));
 
-  res.status(200).json({ success: true, data: workspace });
+  const userId = req.user._id.toString();
+  const isOwner = workspace.owner._id?.toString() === userId || workspace.owner.toString() === userId;
+  const workspaceMember = (workspace.members || []).find(
+    (m) => (m.user?._id || m.user).toString() === userId
+  );
+
+  if (!isOwner && !workspaceMember && req.user.role !== 'admin') {
+    return next(new AppError('Workspace not found', 404));
+  }
+
+  let boardQuery = { workspace: workspace._id };
+
+  if (req.user.role !== 'admin' && !isOwner && !['admin', 'staff'].includes(workspaceMember?.role)) {
+    boardQuery['members.user'] = req.user._id;
+  }
+
+  const boards = await Board.find(boardQuery)
+    .populate('createdBy', 'name email avatar')
+    .sort({ updatedAt: -1 });
+
+  const data = workspace.toObject();
+  data.boards = boards;
+
+  res.status(200).json({ success: true, data });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -180,8 +202,8 @@ exports.addMember = asyncHandler(async (req, res, next) => {
   const { email, role = 'member' } = req.body;
 
   if (!email?.trim()) return next(new AppError('Email is required', 400));
-  if (!['admin', 'member', 'staff'].includes(role)) {
-    return next(new AppError('Role must be admin, member, or staff', 400));
+  if (!['member', 'staff'].includes(role)) {
+    return next(new AppError('Role must be member or staff', 400));
   }
 
   const workspace = await Workspace.findById(workspaceId);
@@ -296,8 +318,8 @@ exports.updateMemberRole = asyncHandler(async (req, res, next) => {
   const { workspaceId, userId } = req.params;
   const { role } = req.body;
 
-  if (!['admin', 'member', 'staff'].includes(role)) {
-    return next(new AppError('Role must be admin, member, or staff', 400));
+  if (!['member', 'staff'].includes(role)) {
+    return next(new AppError('Role must be member or staff', 400));
   }
 
   const workspace = await Workspace.findById(workspaceId);

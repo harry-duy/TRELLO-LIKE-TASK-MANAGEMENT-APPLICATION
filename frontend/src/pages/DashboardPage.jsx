@@ -32,6 +32,10 @@ const L = {
     settingsTitle: 'Cài đặt workspace', settingsHint: 'Xem thông tin và chỉnh sửa workspace.',
     edit: 'Chỉnh sửa', save: 'Lưu', cancel: 'Huỷ', close: 'Đóng',
     deleteWs: 'Xoá workspace', deleteConfirm: 'Xoá workspace này? Không thể hoàn tác.',
+    deleteTitle: 'Xác nhận xoá workspace',
+    deleteHint: 'Hành động này sẽ xoá workspace cùng các board bên trong.',
+    deleteImpact: 'Dữ liệu sẽ bị xoá vĩnh viễn và không thể khôi phục.',
+    deleteAction: 'Xoá ngay',
     updateOk: 'Đã cập nhật!', deleteOk: 'Đã xoá workspace', updateFail: 'Cập nhật thất bại',
     deleteFail: 'Xoá thất bại', nameRequired: 'Tên không được để trống',
     guestNote: 'Bạn là thành viên được mời.', saving: 'Đang lưu...', deleting: 'Đang xoá...',
@@ -41,7 +45,7 @@ const L = {
     inviteFail: 'Không tìm thấy email', removeFail: 'Không thể xoá',
     roleUpdated: 'Đã đổi role', roleFail: 'Không thể đổi role',
     noPermission: 'Bạn không có quyền',
-    you: '(Bạn)', ownerRole: 'Owner', adminRole: 'Admin', memberRole: 'Member', staffRole: 'Staff',
+    you: '(Bạn)', ownerRole: 'Owner', memberRole: 'Member', staffRole: 'Staff',
     loadingMembers: 'Đang tải...', noMembers: 'Chưa có thành viên',
     allBoards: 'Tất cả', recentBoards: 'Gần đây', starredBoards: 'Đã sao',
     boardCount: '{n} bảng',
@@ -69,6 +73,10 @@ const L = {
     settingsTitle: 'Workspace Settings', settingsHint: 'View and edit workspace info.',
     edit: 'Edit', save: 'Save', cancel: 'Cancel', close: 'Close',
     deleteWs: 'Delete workspace', deleteConfirm: 'Delete this workspace? Cannot be undone.',
+    deleteTitle: 'Confirm workspace deletion',
+    deleteHint: 'This will remove the workspace and its boards.',
+    deleteImpact: 'This data will be permanently deleted and cannot be restored.',
+    deleteAction: 'Delete now',
     updateOk: 'Updated!', deleteOk: 'Workspace deleted', updateFail: 'Update failed',
     deleteFail: 'Delete failed', nameRequired: 'Name is required',
     guestNote: 'You are an invited member.', saving: 'Saving...', deleting: 'Deleting...',
@@ -78,7 +86,7 @@ const L = {
     inviteFail: 'No user found', removeFail: 'Cannot remove',
     roleUpdated: 'Role updated', roleFail: 'Cannot update role',
     noPermission: 'No permission',
-    you: '(You)', ownerRole: 'Owner', adminRole: 'Admin', memberRole: 'Member', staffRole: 'Staff',
+    you: '(You)', ownerRole: 'Owner', memberRole: 'Member', staffRole: 'Staff',
     loadingMembers: 'Loading...', noMembers: 'No members yet',
     allBoards: 'All', recentBoards: 'Recent', starredBoards: 'Starred',
     boardCount: '{n} boards',
@@ -263,6 +271,7 @@ function ModalHeader({ title, hint, onClose }) {
 ═══════════════════════════════════════ */
 function SettingsModal({ workspace, boardCount, isGuest, l, onClose, onUpdated, onDeleted }) {
   const [isEditing, setIsEditing] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [name,  setName]  = useState(workspace?.name || '');
   const [desc,  setDesc]  = useState(workspace?.description || '');
   const [vis,   setVis]   = useState(workspace?.visibility || 'private');
@@ -284,7 +293,6 @@ function SettingsModal({ workspace, boardCount, isGuest, l, onClose, onUpdated, 
   };
 
   const handleDelete = async () => {
-    if (!window.confirm(l.deleteConfirm)) return;
     setDeleting(true);
     try {
       await workspaceService.deleteWorkspace(wsId);
@@ -292,7 +300,10 @@ function SettingsModal({ workspace, boardCount, isGuest, l, onClose, onUpdated, 
       toast.success(l.deleteOk);
       onClose();
     } catch (e) { toast.error(e?.message || l.deleteFail); }
-    finally { setDeleting(false); }
+    finally {
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+    }
   };
 
   return (
@@ -347,7 +358,7 @@ function SettingsModal({ workspace, boardCount, isGuest, l, onClose, onUpdated, 
         {/* ID */}
         <div style={{ borderRadius: 12, border: '1px solid rgba(255,255,255,.07)', background: 'rgba(255,255,255,.02)', padding: '11px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{ fontSize: 12, color: 'rgba(255,255,255,.45)' }}>{l.wsIdLabel}</span>
-          <button type="button" onClick={async () => { try { await navigator.clipboard.writeText(String(wsId)); toast.success(l.copied); } catch {} }}
+          <button type="button" onClick={async () => { try { await navigator.clipboard.writeText(String(wsId)); toast.success(l.copied); } catch { toast.error('Copy failed'); } }}
             style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,.12)', background: 'rgba(255,255,255,.06)', color: 'rgba(255,255,255,.8)', fontSize: 11, cursor: 'pointer' }}>{l.copyId}</button>
         </div>
 
@@ -377,7 +388,7 @@ function SettingsModal({ workspace, boardCount, isGuest, l, onClose, onUpdated, 
                   style={{ padding: '8px 18px', borderRadius: 10, border: '1px solid rgba(255,255,255,.12)', background: 'rgba(255,255,255,.06)', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
                   {l.edit}
                 </button>
-                <button type="button" onClick={handleDelete} disabled={deleting}
+                <button type="button" onClick={() => setShowDeleteConfirm(true)} disabled={deleting}
                   style={{ padding: '8px 18px', borderRadius: 10, border: 'none', background: 'rgba(239,68,68,.18)', color: '#f87171', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
                   {deleting ? l.deleting : l.deleteWs}
                 </button>
@@ -390,6 +401,114 @@ function SettingsModal({ workspace, boardCount, isGuest, l, onClose, onUpdated, 
           </button>
         </div>
       </div>
+
+      {showDeleteConfirm && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'rgba(2,6,23,.72)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+          onClick={() => !deleting && setShowDeleteConfirm(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 420,
+              borderRadius: 20,
+              border: '1px solid rgba(248,113,113,.2)',
+              background: 'linear-gradient(160deg,rgba(26,12,18,.98),rgba(20,14,29,.98))',
+              boxShadow: '0 24px 60px rgba(0,0,0,.45)',
+              padding: 20,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 14,
+            }}
+          >
+            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+              <div style={{
+                width: 42,
+                height: 42,
+                borderRadius: 14,
+                background: 'rgba(239,68,68,.16)',
+                color: '#f87171',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 18,
+                fontWeight: 700,
+                flexShrink: 0,
+              }}>
+                !
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <h4 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: 'white' }}>{l.deleteTitle}</h4>
+                <p style={{ margin: '6px 0 0', fontSize: 13, color: 'rgba(255,255,255,.65)' }}>{l.deleteHint}</p>
+              </div>
+            </div>
+
+            <div style={{
+              borderRadius: 14,
+              border: '1px solid rgba(255,255,255,.08)',
+              background: 'rgba(255,255,255,.04)',
+              padding: '12px 14px',
+            }}>
+              <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.08em', color: 'rgba(248,113,113,.8)' }}>
+                Workspace
+              </div>
+              <div style={{ marginTop: 6, fontSize: 16, fontWeight: 700, color: 'white', wordBreak: 'break-word' }}>
+                {workspace.name}
+              </div>
+              <div style={{ marginTop: 8, fontSize: 12, color: 'rgba(255,255,255,.55)' }}>
+                {l.deleteImpact}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleting}
+                style={{
+                  padding: '9px 16px',
+                  borderRadius: 10,
+                  border: '1px solid rgba(255,255,255,.12)',
+                  background: 'rgba(255,255,255,.04)',
+                  color: 'rgba(255,255,255,.78)',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: deleting ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {l.cancel}
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+                style={{
+                  padding: '9px 16px',
+                  borderRadius: 10,
+                  border: 'none',
+                  background: 'linear-gradient(135deg,#ef4444,#dc2626)',
+                  color: 'white',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: deleting ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {deleting ? l.deleting : l.deleteAction}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Modal>
   );
 }
@@ -405,10 +524,15 @@ function MembersModal({ workspace, isGuest, l, onClose }) {
   const [role,     setRole]     = useState('member');
   const [inviting, setInviting] = useState(false);
   const [wsData,   setWsData]   = useState(null);
-  if (!workspace) return null;
-  const wsId = getId(workspace);
+  const wsId = workspace ? getId(workspace) : null;
 
   const load = async () => {
+    if (!wsId) {
+      setWsData(null);
+      setMembers([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const res = await workspaceService.getWorkspace(wsId);
@@ -423,11 +547,13 @@ function MembersModal({ workspace, isGuest, l, onClose }) {
   };
   useEffect(() => { load(); }, [wsId]);
 
+  if (!workspace) return null;
+
   const ownerId = (wsData?.owner?._id || wsData?.owner)?.toString();
   const isOwner = ownerId === user?._id?.toString() || user?.role === 'admin';
   const isAdmin = isOwner || (wsData?.members || []).some(m => (m.user?._id || m.user)?.toString() === user?._id?.toString() && m.role === 'admin') || user?.role === 'admin';
-  const roleColor = { owner: '#fbbf24', admin: '#60a5fa', staff: '#a78bfa', member: 'rgba(255,255,255,.45)' };
-  const roleLabel = { owner: l.ownerRole, admin: l.adminRole, staff: l.staffRole, member: l.memberRole };
+  const roleColor = { owner: '#fbbf24', admin: '#a78bfa', staff: '#a78bfa', member: 'rgba(255,255,255,.45)' };
+  const roleLabel = { owner: l.ownerRole, admin: l.staffRole, staff: l.staffRole, member: l.memberRole };
 
   const handleInvite = async () => {
     if (!email.trim()) return;
@@ -453,7 +579,6 @@ function MembersModal({ workspace, isGuest, l, onClose }) {
               <select value={role} onChange={e => setRole(e.target.value)}
                 style={{ flex: 1, padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(255,255,255,.1)', background: 'rgba(15,20,36,.9)', color: 'white', fontSize: 13, outline: 'none' }}>
                 <option value="member">{l.memberRole}</option>
-                <option value="admin">{l.adminRole}</option>
                 <option value="staff">{l.staffRole}</option>
               </select>
               <button type="button" disabled={inviting || !email.trim()} onClick={handleInvite}
@@ -490,7 +615,6 @@ function MembersModal({ workspace, isGuest, l, onClose }) {
                   <select value={m.role} onChange={async e => { try { await workspaceService.updateMemberRole(wsId, String(uid), e.target.value); toast.success(l.roleUpdated); load(); } catch (err) { toast.error(err?.message || l.roleFail); } }}
                     style={{ padding: '4px 8px', borderRadius: 8, border: '1px solid rgba(255,255,255,.15)', background: 'rgba(15,20,36,.9)', color: roleColor[m.role] || 'white', fontSize: 11, fontWeight: 700, cursor: 'pointer', outline: 'none' }}>
                     <option value="member">{l.memberRole}</option>
-                    <option value="admin">{l.adminRole}</option>
                     <option value="staff">{l.staffRole}</option>
                   </select>
                 ) : (
@@ -732,6 +856,7 @@ export default function DashboardPage() {
   const ownedWorkspaces = useMemo(() => workspaces.filter(ws => getId(ws.owner)?.toString() === userId), [workspaces, userId]);
   const guestWorkspaces = useMemo(() => workspaces.filter(ws => getId(ws.owner)?.toString() !== userId), [workspaces, userId]);
   const guestIds        = useMemo(() => new Set(guestWorkspaces.map(ws => getId(ws))), [guestWorkspaces]);
+  const orderedWorkspaces = useMemo(() => [...ownedWorkspaces, ...guestWorkspaces], [ownedWorkspaces, guestWorkspaces]);
 
   const boardsByWs = useMemo(() => {
     const map = new Map();
@@ -746,7 +871,7 @@ export default function DashboardPage() {
 
   const recentBoards  = useMemo(() => [...boards].sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0)).slice(0, 12), [boards]);
   const starredBoards = useMemo(() => boards.filter(b => (b.starredBy || []).some(id => (id?._id || id)?.toString() === userId?.toString())), [boards, userId]);
-  const activeWorkspace = useMemo(() => workspaces.find(ws => getId(ws) === activeNav) || null, [workspaces, activeNav]);
+  const activeWorkspace = useMemo(() => orderedWorkspaces.find(ws => getId(ws) === activeNav) || null, [orderedWorkspaces, activeNav]);
 
   const handleWsUpdated = (wsId, next) => {
     setWorkspaces(prev => prev.map(ws => getId(ws) === wsId ? { ...ws, ...next } : ws));
@@ -851,7 +976,7 @@ export default function DashboardPage() {
         />
 
         {/* Each workspace section */}
-        {workspaces.map(ws => {
+        {orderedWorkspaces.map(ws => {
           const wsId    = getId(ws);
           const wsBoards = boardsByWs.get(wsId) || [];
           return (
@@ -948,8 +1073,8 @@ export default function DashboardPage() {
       )}
       {showCreateBoard && (
         <CreateBoardModal
-          workspaces={workspaces}
-          defaultWsId={createWsId || workspaces[0]?._id}
+          workspaces={orderedWorkspaces}
+          defaultWsId={createWsId || orderedWorkspaces[0]?._id}
           l={l}
           onClose={() => { setShowCreateBoard(false); setCreateWsId(null); }}
           onCreated={loadData}

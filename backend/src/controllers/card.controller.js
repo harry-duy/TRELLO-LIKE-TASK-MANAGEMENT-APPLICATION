@@ -2,6 +2,7 @@ const Card = require('../models/card.model');
 const Board = require('../models/board.model');
 const Workspace = require('../models/workspace.model');
 const Activity = require('../models/activity.model');
+const User = require('../models/user.model');
 const { asyncHandler, AppError } = require('../middleware/errorHandler');
 const notify = require('../utils/notifyHelper');
 const { cloudinary, upload } = require('../config/cloudinary');
@@ -18,6 +19,21 @@ const ensureBoardAccess = async (boardId, user) => {
   );
   if (!isOwner && !isMember) throw new AppError('You do not have access to this board', 403);
   return board;
+};
+
+const getBoardWorkspaceId = async (boardId) => {
+  const board = await Board.findById(boardId).select('workspace');
+  if (!board) return null;
+  return board.workspace || null;
+};
+
+const toIdStrings = (items = []) =>
+  items.map((item) => item?.toString?.() || String(item)).filter(Boolean);
+
+const normalizeDateValue = (value) => {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
 };
 
 // @desc    Search cards in a board (with pagination)
@@ -83,8 +99,10 @@ exports.searchCards = asyncHandler(async (req, res, next) => {
 
 // @desc    Create card
 // @route   POST /api/cards
-exports.createCard = asyncHandler(async (req, res) => {
+exports.createCard = asyncHandler(async (req, res, next) => {
   const { title, listId, boardId } = req.body;
+  if (!boardId) return next(new AppError('boardId is required', 400));
+  await ensureBoardAccess(boardId, req.user);
   const card = await Card.create({
     title,
     list: listId,
@@ -97,6 +115,7 @@ exports.createCard = asyncHandler(async (req, res) => {
     target: card._id,
     targetType: 'Card',
     board: boardId,
+    workspace: workspaceId,
   });
   res.status(201).json({ success: true, data: card });
 });
@@ -108,6 +127,7 @@ exports.moveCard = asyncHandler(async (req, res, next) => {
   const { listId, position, boardId } = req.body;
   const card = await Card.findById(id);
   if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
   const oldListId = card.list;
   await card.moveToList(listId, position);
   await Activity.log({
@@ -116,6 +136,7 @@ exports.moveCard = asyncHandler(async (req, res, next) => {
     target: card._id,
     targetType: 'Card',
     board: boardId,
+    workspace: workspaceId,
     metadata: { fromList: oldListId, toList: listId },
   });
   const io = req.app.get('io');
@@ -141,27 +162,73 @@ exports.moveCard = asyncHandler(async (req, res, next) => {
 exports.updateCard = asyncHandler(async (req, res, next) => {
   const card = await Card.findById(req.params.id);
   if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
 
   const oldIsCompleted = card.isCompleted;
   const oldAssignees = card.assignees ? [...card.assignees] : [];
+  const oldLabels = [...(card.labels || [])];
+  const oldDueDate = card.dueDate;
+  const workspaceId = await getBoardWorkspaceId(card.board);
 
-  Object.keys(req.body).forEach((key) => {
-    card[key] = req.body[key];
+  const ALLOWED_FIELDS = [
+    'title', 'description', 'dueDate', 'isCompleted',
+    'labels', 'assignees', 'isArchived', 'cover', 'watchers',
+  ];
+  ALLOWED_FIELDS.forEach((key) => {
+    if (req.body[key] !== undefined) card[key] = req.body[key];
   });
   await card.save();
 
+  const io = req.app?.get?.('io');
+  const activityTasks = [];
+
   if (!oldIsCompleted && card.isCompleted) {
-    await Activity.log({
+    activityTasks.push(Activity.log({
       actor: req.user._id, action: 'card_completed',
-      target: card._id,  targetType: 'Card', board: card.board,
-    });
+      target: card._id,  targetType: 'Card', board: card.board, workspace: workspaceId,
+    }));
   }
   if (req.body.assignees) {
     const oldIds = oldAssignees.map((a) => a.toString());
     const newIds = (req.body.assignees || []).map((a) => a.toString());
     const addedIds   = newIds.filter((id) => !oldIds.includes(id));
     const removedIds = oldIds.filter((id) => !newIds.includes(id));
-    const io = req.app?.get?.('io');
+    const changedAssigneeIds = [...addedIds, ...removedIds];
+    const changedUsers = changedAssigneeIds.length
+      ? await User.find({ _id: { $in: changedAssigneeIds } }).select('name')
+      : [];
+    const nameById = new Map(changedUsers.map((user) => [user._id.toString(), user.name]));
+
+    addedIds.forEach((assigneeId) => {
+      activityTasks.push(Activity.log({
+        actor: req.user._id,
+        action: 'member_assigned',
+        target: card._id,
+        targetType: 'Card',
+        board: card.board,
+        workspace: workspaceId,
+        metadata: {
+          assigneeId,
+          assigneeName: nameById.get(assigneeId) || assigneeId,
+        },
+      }));
+    });
+
+    removedIds.forEach((assigneeId) => {
+      activityTasks.push(Activity.log({
+        actor: req.user._id,
+        action: 'member_unassigned',
+        target: card._id,
+        targetType: 'Card',
+        board: card.board,
+        workspace: workspaceId,
+        metadata: {
+          assigneeId,
+          assigneeName: nameById.get(assigneeId) || assigneeId,
+        },
+      }));
+    });
+
     if (addedIds.length > 0) {
       await notify(io, {
         actor:      req.user._id,
@@ -185,9 +252,65 @@ exports.updateCard = asyncHandler(async (req, res, next) => {
       });
     }
   }
+  if (req.body.labels) {
+    const addedLabels = card.labels.filter((label) => !oldLabels.includes(label));
+    const removedLabels = oldLabels.filter((label) => !card.labels.includes(label));
+
+    addedLabels.forEach((label) => {
+      activityTasks.push(Activity.log({
+        actor: req.user._id,
+        action: 'label_added',
+        target: card._id,
+        targetType: 'Card',
+        board: card.board,
+        workspace: workspaceId,
+        metadata: { label },
+      }));
+    });
+
+    removedLabels.forEach((label) => {
+      activityTasks.push(Activity.log({
+        actor: req.user._id,
+        action: 'label_removed',
+        target: card._id,
+        targetType: 'Card',
+        board: card.board,
+        workspace: workspaceId,
+        metadata: { label },
+      }));
+    });
+  }
+
+  if (req.body.dueDate !== undefined && normalizeDateValue(oldDueDate) !== normalizeDateValue(card.dueDate)) {
+    activityTasks.push(Activity.log({
+      actor: req.user._id,
+      action: 'due_date_changed',
+      target: card._id,
+      targetType: 'Card',
+      board: card.board,
+      workspace: workspaceId,
+      metadata: {
+        previousDueDate: normalizeDateValue(oldDueDate),
+        nextDueDate: normalizeDateValue(card.dueDate),
+      },
+    }));
+  }
+
+  const changedFields = Object.keys(req.body).filter((key) => !['isCompleted', 'assignees', 'labels', 'dueDate'].includes(key));
+  if (changedFields.length > 0) {
+    activityTasks.push(Activity.log({
+      actor: req.user._id,
+      action: 'card_updated',
+      target: card._id,
+      targetType: 'Card',
+      board: card.board,
+      workspace: workspaceId,
+      metadata: { fields: changedFields },
+    }));
+  }
+
   const hasContentUpdate = req.body.title || req.body.description || req.body.dueDate !== undefined;
   if (hasContentUpdate && card.assignees?.length > 0) {
-    const io = req.app?.get?.('io');
     await notify(io, {
       actor:      req.user._id,
       recipients: card.assignees.map((a) => a._id || a),
@@ -198,6 +321,15 @@ exports.updateCard = asyncHandler(async (req, res, next) => {
       metadata:   { cardId: card._id, cardTitle: card.title, boardId: card.board },
     });
   }
+
+  await Promise.all(activityTasks);
+
+  io?.to(`board:${card.board}`).emit('card:updated', {
+    cardId: card._id,
+    updates: req.body,
+    updatedBy: req.user._id,
+  });
+
   res.status(200).json({ success: true, data: card });
 });
 
@@ -209,6 +341,7 @@ exports.getCardDetails = asyncHandler(async (req, res, next) => {
     .populate('assignees', 'name email avatar')
     .populate('comments.user', 'name email avatar');
   if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
   res.status(200).json({ success: true, data: card });
 });
 
@@ -219,7 +352,19 @@ exports.addComment = asyncHandler(async (req, res, next) => {
   const { content, boardId } = req.body;
   const card = await Card.findById(id);
   if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
   await card.addComment(req.user._id, content);
+  await Activity.log({
+    actor: req.user._id,
+    action: 'comment_added',
+    target: card._id,
+    targetType: 'Card',
+    board: card.board,
+    workspace: workspaceId,
+    metadata: {
+      commentPreview: content.slice(0, 120),
+    },
+  });
   const io = req.app.get('io');
   io.to(`board:${boardId}`).emit('comment:added', {
     cardId: id, comment: card.comments[card.comments.length - 1],
@@ -238,11 +383,55 @@ exports.addComment = asyncHandler(async (req, res, next) => {
   res.status(200).json({ success: true, data: card.comments });
 });
 
+// @desc    Update comment
+// @route   PUT /api/cards/:id/comments/:commentId
+exports.updateComment = asyncHandler(async (req, res, next) => {
+  const { content } = req.body;
+  if (!content?.trim()) return next(new AppError('Content is required', 400));
+
+  const card = await Card.findById(req.params.id);
+  if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
+
+  const comment = card.comments.id(req.params.commentId);
+  if (!comment) return next(new AppError('Comment not found', 404));
+  if (comment.user.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+    return next(new AppError('You can only edit your own comments', 403));
+  }
+
+  comment.content   = content.trim();
+  comment.updatedAt = new Date();
+  await card.save();
+
+  const updated = await Card.findById(req.params.id).populate('comments.user', 'name email avatar');
+  res.status(200).json({ success: true, data: updated.comments });
+});
+
+// @desc    Delete comment
+// @route   DELETE /api/cards/:id/comments/:commentId
+exports.deleteComment = asyncHandler(async (req, res, next) => {
+  const card = await Card.findById(req.params.id);
+  if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
+
+  const comment = card.comments.id(req.params.commentId);
+  if (!comment) return next(new AppError('Comment not found', 404));
+  if (comment.user.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+    return next(new AppError('You can only delete your own comments', 403));
+  }
+
+  card.comments.pull({ _id: req.params.commentId });
+  await card.save();
+
+  res.status(200).json({ success: true, data: { id: req.params.commentId } });
+});
+
 // @desc    Add checklist item
 // @route   POST /api/cards/:id/checklist
 exports.addChecklistItem = asyncHandler(async (req, res, next) => {
   const card = await Card.findById(req.params.id);
   if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
   await card.addChecklistItem(req.body.text);
   res.status(200).json({ success: true, data: card.checklist });
 });
@@ -252,6 +441,7 @@ exports.addChecklistItem = asyncHandler(async (req, res, next) => {
 exports.toggleChecklistItem = asyncHandler(async (req, res, next) => {
   const card = await Card.findById(req.params.id);
   if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
   await card.toggleChecklistItem(req.params.itemId);
   res.status(200).json({ success: true, data: card.checklist });
 });
@@ -298,13 +488,120 @@ exports.moveChecklistItem = asyncHandler(async (req, res, next) => {
   });
 });
 
-// @desc    Delete card
+// @desc    Get archived cards for a board
+// @route   GET /api/cards/archived
+exports.getArchivedCards = asyncHandler(async (req, res, next) => {
+  const { boardId } = req.query;
+  if (!boardId) return next(new AppError('boardId is required', 400));
+  await ensureBoardAccess(boardId, req.user);
+
+  const cards = await Card.find({ board: boardId, isArchived: true })
+    .populate('list', 'name')
+    .populate('assignees', 'name email avatar')
+    .sort({ updatedAt: -1 });
+
+  res.status(200).json({ success: true, data: cards });
+});
+
+// @desc    Restore archived card to its original list
+// @route   PUT /api/cards/:id/restore
+exports.restoreCard = asyncHandler(async (req, res, next) => {
+  const card = await Card.findById(req.params.id);
+  if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
+  if (!card.isArchived) return next(new AppError('Card is not archived', 400));
+
+  card.isArchived = false;
+  await card.save();
+
+  await Activity.log({
+    actor: req.user._id,
+    action: 'card_restored',
+    target: card._id,
+    targetType: 'Card',
+    board: card.board,
+  });
+
+  res.status(200).json({ success: true, data: card });
+});
+
+// @desc    Delete card (must be archived first)
 // @route   DELETE /api/cards/:id
 exports.deleteCard = asyncHandler(async (req, res, next) => {
   const card = await Card.findById(req.params.id);
   if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
+  if (!card.isArchived) return next(new AppError('Card must be archived before it can be deleted', 400));
   await Card.deleteOne({ _id: req.params.id });
   res.status(200).json({ success: true, data: { id: req.params.id } });
+});
+
+// @desc    Duplicate a card
+// @route   POST /api/cards/:id/duplicate
+exports.duplicateCard = asyncHandler(async (req, res, next) => {
+  const source = await Card.findById(req.params.id);
+  if (!source) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(source.board, req.user);
+
+  const count = await Card.countDocuments({ list: source.list, isArchived: false });
+  const newCard = await Card.create({
+    title:       `${source.title} (copy)`,
+    description: source.description,
+    list:        source.list,
+    board:       source.board,
+    position:    count,
+    labels:      source.labels,
+    dueDate:     source.dueDate,
+    checklist:   source.checklist.map(item => ({
+      text:      item.text,
+      completed: false,
+    })),
+    createdBy: req.user._id,
+  });
+
+  await Activity.log({
+    actor: req.user._id, action: 'card_created',
+    target: newCard._id, targetType: 'Card', board: source.board,
+  });
+
+  res.status(201).json({ success: true, data: newCard });
+});
+
+// @desc    Toggle watch/unwatch a card
+// @route   POST /api/cards/:id/watch
+exports.toggleWatcher = asyncHandler(async (req, res, next) => {
+  const card = await Card.findById(req.params.id);
+  if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
+
+  const userId = req.user._id.toString();
+  const idx = (card.watchers || []).findIndex(w => w.toString() === userId);
+  let isWatching;
+  if (idx > -1) {
+    card.watchers.splice(idx, 1);
+    isWatching = false;
+  } else {
+    card.watchers.push(req.user._id);
+    isWatching = true;
+  }
+  await card.save();
+
+  res.status(200).json({ success: true, isWatching, data: card.watchers });
+});
+
+// @desc    Get activity log for a card
+// @route   GET /api/cards/:id/activity
+exports.getCardActivity = asyncHandler(async (req, res, next) => {
+  const card = await Card.findById(req.params.id).select('board');
+  if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
+
+  const activities = await Activity.find({ target: req.params.id, targetType: 'Card' })
+    .populate('actor', 'name email avatar')
+    .sort({ createdAt: -1 })
+    .limit(50);
+
+  res.status(200).json({ success: true, data: activities });
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -319,6 +616,7 @@ exports.addAttachment = [
   asyncHandler(async (req, res, next) => {
     const card = await Card.findById(req.params.id);
     if (!card) return next(new AppError('Card not found', 404));
+    await ensureBoardAccess(card.board, req.user);
     if (!req.file) return next(new AppError('No file uploaded', 400));
 
     const attachment = {
@@ -337,6 +635,7 @@ exports.addAttachment = [
       target:     card._id,
       targetType: 'Card',
       board:      card.board,
+      workspace:  await getBoardWorkspaceId(card.board),
       metadata:   { fileName: attachment.name, fileType: attachment.type },
     });
 
@@ -351,6 +650,7 @@ exports.deleteAttachment = asyncHandler(async (req, res, next) => {
   const { id, attachmentId } = req.params;
   const card = await Card.findById(id);
   if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
 
   const attachment = card.attachments.id(attachmentId);
   if (!attachment) return next(new AppError('Attachment not found', 404));
