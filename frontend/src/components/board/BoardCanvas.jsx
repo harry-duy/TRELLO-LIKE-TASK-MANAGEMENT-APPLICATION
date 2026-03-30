@@ -15,6 +15,7 @@ import { useAuthStore }  from '@store/authStore';
 import boardService      from '@services/boardService';
 import cardService       from '@services/cardService';
 import listService       from '@services/listService';
+import aiService         from '@services/aiService';
 import ListColumn        from '@components/board/ListColumn';
 import CardModal         from '@components/card/CardModal';
 import StarButton        from '@components/board/StarButton';
@@ -36,6 +37,11 @@ const L = {
     share:           'Chia sẻ',
     star:            'Đánh dấu',
     unstar:          'Bỏ đánh dấu',
+    aiSearchPh:      "AI Search: ví dụ 'task backend quá hạn'",
+    aiSearching:     'Đang tìm...',
+    aiSearchBtn:     'Tìm',
+    aiSearchNoResult:'Không tìm thấy card phù hợp',
+    aiSearchError:   'Không thể tìm kiếm với AI',
     listLabel:       'Danh sách',
     addAnotherList:  '+ Thêm danh sách',
     listNamePh:      'Tên danh sách...',
@@ -63,6 +69,11 @@ const L = {
     share:           'Share',
     star:            'Star',
     unstar:          'Starred',
+    aiSearchPh:      "AI Search: e.g. 'overdue backend task'",
+    aiSearching:     'Searching...',
+    aiSearchBtn:     'Search',
+    aiSearchNoResult:'No matching cards found',
+    aiSearchError:   'Could not search with AI',
     listLabel:       'List',
     addAnotherList:  '+ Add a list',
     listNamePh:      'List name...',
@@ -98,6 +109,9 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
   const [activeList,     setActiveList]     = useState(null);
   const [isAddingList,   setIsAddingList]   = useState(false);
   const [listName,       setListName]       = useState('');
+  const [aiSearchQuery,  setAiSearchQuery]  = useState('');
+  const [aiSearchResult, setAiSearchResult] = useState(null);
+  const [showAiSearch,   setShowAiSearch]   = useState(false);
   const [showFilter,     setShowFilter]     = useState(false);
   const [filter,         setFilter]         = useState(EMPTY_FILTER);
   const [showMembers,    setShowMembers]    = useState(false);
@@ -117,6 +131,15 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
     enabled:  !!boardId && authReady,
   });
   const board = boardRaw?.data ?? boardRaw;
+
+  const aiSearchMutation = useMutation({
+    mutationFn: ({ boardId: bid, query }) => aiService.searchCards({ boardId: bid, query }),
+    onSuccess: res => {
+      setAiSearchResult(res);
+      if (!(res?.cards || []).length) toast(l.aiSearchNoResult);
+    },
+    onError: err => toast.error(err?.message || l.aiSearchError),
+  });
 
   /* ─── Socket ─── */
   useEffect(() => {
@@ -348,6 +371,19 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
 
           {/* Header actions */}
           <div className="board-header-actions">
+            {/* AI Search toggle */}
+            <button
+              className="board-button"
+              onClick={() => setShowAiSearch(v => !v)}
+              style={showAiSearch ? { background: 'rgba(255,255,255,.32)' } : {}}
+            >
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.4"/>
+                <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+              </svg>
+              {l.aiAssist}
+            </button>
+
             {/* Filter */}
             <div style={{ position: 'relative' }}>
               <button
@@ -408,6 +444,59 @@ export default function BoardCanvas({ boardId, showHeader = true }) {
               {l.share}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* ─── AI Search Panel ─── */}
+      {showAiSearch && (
+        <div className="board-search-panel">
+          <div className="board-search-toolbar">
+            <input
+              className="input board-search-input"
+              placeholder={l.aiSearchPh}
+              value={aiSearchQuery}
+              onChange={e => setAiSearchQuery(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && aiSearchQuery.trim())
+                  aiSearchMutation.mutate({ boardId, query: aiSearchQuery.trim() });
+              }}
+            />
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => aiSearchQuery.trim() && aiSearchMutation.mutate({ boardId, query: aiSearchQuery.trim() })}
+              disabled={aiSearchMutation.isPending}
+              style={{ flexShrink: 0 }}
+            >
+              {aiSearchMutation.isPending ? l.aiSearching : l.aiSearchBtn}
+            </button>
+            {aiSearchResult && (
+              <button
+                type="button"
+                onClick={() => setAiSearchResult(null)}
+                className="board-inline-close"
+              >
+                x
+              </button>
+            )}
+          </div>
+
+          {!!aiSearchResult?.cards?.length && (
+            <div className="board-search-results">
+              {aiSearchResult.cards.map(card => (
+                <button
+                  key={card._id}
+                  type="button"
+                  onClick={() => setSelectedCardId(card._id)}
+                  className="board-search-chip"
+                >
+                  {card.title}
+                  {card.list?.name && (
+                    <span style={{ opacity: 0.6, marginLeft: 6 }}>· {card.list.name}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
