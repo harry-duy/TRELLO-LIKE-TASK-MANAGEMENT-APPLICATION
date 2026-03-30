@@ -828,7 +828,7 @@ export default function DashboardPage() {
   const navigate  = useNavigate();
   const userId    = user?._id?.toString();
 
-  // 'boards' | 'recent' | 'starred' | <workspace-id>
+  // 'boards' | 'recent' | 'starred' | 'mine' | 'invited'
   const [activeNav, setActiveNav] = useState('boards');
 
   const [workspaces, setWorkspaces] = useState([]);
@@ -871,8 +871,6 @@ export default function DashboardPage() {
 
   const recentBoards  = useMemo(() => [...boards].sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0)).slice(0, 12), [boards]);
   const starredBoards = useMemo(() => boards.filter(b => (b.starredBy || []).some(id => (id?._id || id)?.toString() === userId?.toString())), [boards, userId]);
-  const activeWorkspace = useMemo(() => orderedWorkspaces.find(ws => getId(ws) === activeNav) || null, [orderedWorkspaces, activeNav]);
-
   const handleWsUpdated = (wsId, next) => {
     setWorkspaces(prev => prev.map(ws => getId(ws) === wsId ? { ...ws, ...next } : ws));
     setSettingsWs(cur => cur && getId(cur) === wsId ? { ...cur, ...next } : cur);
@@ -881,10 +879,57 @@ export default function DashboardPage() {
     setWorkspaces(prev => prev.filter(ws => getId(ws) !== wsId));
     setBoards(prev => prev.filter(b => getId(b.workspace) !== wsId));
     setSettingsWs(null);
-    if (activeNav === wsId) setActiveNav('boards');
   };
 
   const handleOpenCreate = (wsId) => { setCreateWsId(wsId); setShowCreateBoard(true); };
+
+  const renderWorkspaceSections = (list, emptyText) => {
+    if (!list.length) {
+      return (
+        <div style={{ borderRadius: 18, border: '2px dashed rgba(255,255,255,.1)', background: 'rgba(255,255,255,.02)', padding: '48px 20px', textAlign: 'center', color: 'rgba(255,255,255,.38)', fontSize: 14 }}>
+          {emptyText}
+        </div>
+      );
+    }
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 36 }}>
+        {list.map(ws => {
+          const wsId = getId(ws);
+          const wsBoards = boardsByWs.get(wsId) || [];
+          return (
+            <div key={wsId} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <WorkspaceHeaderBar
+                ws={ws}
+                boardCount={wsBoards.length}
+                isGuest={guestIds.has(wsId)}
+                l={l}
+                onOpenSettings={setSettingsWs}
+                onOpenMembers={setMembersWs}
+                navigate={navigate}
+              />
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
+                {wsBoards.map(b => (
+                  <BoardCard key={b._id} board={b} userId={userId} l={l} onStarToggle={loadData} onOpen={() => navigate(`/board/${b._id}`)} />
+                ))}
+                <AddBoardCard onClick={() => handleOpenCreate(wsId)} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderWorkspaceGroup = (title, hint, list, emptyText) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div>
+        <h2 style={{ fontSize: 22, fontWeight: 700, color: 'white', margin: 0, letterSpacing: '-.02em' }}>{title}</h2>
+        {hint ? <p style={{ fontSize: 13, color: 'rgba(255,255,255,.45)', marginTop: 4 }}>{hint}</p> : null}
+      </div>
+      {renderWorkspaceSections(list, emptyText)}
+    </div>
+  );
 
   /* ── SIDEBAR ── */
   const Sidebar = () => (
@@ -897,6 +942,12 @@ export default function DashboardPage() {
           icon: <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.3"/><path d="M7 4.5V7l2 1.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg> },
         { key: 'starred', label: l.navStarred, badge: starredBoards.length,
           icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 1.5l1.854 3.756 4.146.603-3 2.924.708 4.127L8 10.77l-3.708 2.14.708-4.127L2 5.86l4.146-.603L8 1.5z"/></svg> },
+        { key: 'mine', label: lang === 'vi' ? 'My Workspace' : 'My Workspaces',
+          badge: ownedWorkspaces.length,
+          icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.3"/><path d="M5.5 10.5V6.2h1.3l1.2 2.2 1.2-2.2h1.3v4.3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg> },
+        { key: 'invited', label: lang === 'vi' ? 'Invited' : 'Invited',
+          badge: guestWorkspaces.length,
+          icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 2.5v11M3.5 6.5L8 2l4.5 4.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg> },
       ].map(item => {
         const active = activeNav === item.key;
         return (
@@ -914,39 +965,6 @@ export default function DashboardPage() {
           </button>
         );
       })}
-
-      {/* Divider */}
-      <div style={{ height: 1, background: 'rgba(255,255,255,.07)', margin: '6px 4px 8px' }} />
-
-      {/* Workspaces */}
-      {[
-        { label: l.ownedLabel, list: ownedWorkspaces },
-        { label: l.guestLabel, list: guestWorkspaces },
-      ].map(group => group.list.length === 0 ? null : (
-        <div key={group.label} style={{ marginBottom: 6 }}>
-          <p style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.09em', color: 'rgba(255,255,255,.28)', padding: '4px 12px', margin: 0 }}>
-            {group.label}
-          </p>
-          {group.list.map(ws => {
-            const wsId   = getId(ws);
-            const active = activeNav === wsId;
-            const accent = accentOf(ws.name);
-            const bCount = boardsByWs.get(wsId)?.length || 0;
-            return (
-              <button key={wsId} type="button" onClick={() => setActiveNav(wsId)}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '7px 12px', borderRadius: 12, border: 'none', cursor: 'pointer', background: active ? 'rgba(255,255,255,.1)' : 'transparent', color: active ? 'white' : 'rgba(255,255,255,.55)', fontSize: 13, fontWeight: active ? 600 : 400, transition: 'all .15s', textAlign: 'left' }}
-                onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'rgba(255,255,255,.06)'; }}
-                onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}>
-                <span style={{ width: 26, height: 26, borderRadius: 8, background: accent, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: 'white' }}>
-                  {(ws.name || 'W')[0].toUpperCase()}
-                </span>
-                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ws.name}</span>
-                {bCount > 0 && <span style={{ fontSize: 10, color: 'rgba(255,255,255,.32)', fontWeight: 600, flexShrink: 0 }}>{bCount}</span>}
-              </button>
-            );
-          })}
-        </div>
-      ))}
     </aside>
   );
 
@@ -975,25 +993,19 @@ export default function DashboardPage() {
           onOpenCreate={() => setShowCreateBoard(true)}
         />
 
-        {/* Each workspace section */}
-        {orderedWorkspaces.map(ws => {
-          const wsId    = getId(ws);
-          const wsBoards = boardsByWs.get(wsId) || [];
-          return (
-            <div key={wsId} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <WorkspaceHeaderBar
-                ws={ws} boardCount={wsBoards.length} isGuest={guestIds.has(wsId)} l={l}
-                onOpenSettings={setSettingsWs} onOpenMembers={setMembersWs} navigate={navigate}
-              />
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
-                {wsBoards.map(b => (
-                  <BoardCard key={b._id} board={b} userId={userId} l={l} onStarToggle={loadData} onOpen={() => navigate(`/board/${b._id}`)} />
-                ))}
-                <AddBoardCard onClick={() => handleOpenCreate(wsId)} />
-              </div>
-            </div>
-          );
-        })}
+        {renderWorkspaceGroup(
+          lang === 'vi' ? 'My Workspace' : 'My Workspaces',
+          lang === 'vi' ? 'Cac workspace ban so huu hoac quan ly chinh.' : 'Workspaces you own or primarily manage.',
+          ownedWorkspaces,
+          lang === 'vi' ? 'Ban chua co workspace nao.' : 'You do not have any workspaces yet.'
+        )}
+
+        {renderWorkspaceGroup(
+          lang === 'vi' ? 'Invited' : 'Invited',
+          lang === 'vi' ? 'Cac workspace ban duoc moi tham gia.' : 'Workspaces you were invited to join.',
+          guestWorkspaces,
+          lang === 'vi' ? 'Ban chua duoc moi vao workspace nao.' : 'You have not been invited to any workspaces yet.'
+        )}
       </div>
     );
 
@@ -1021,28 +1033,17 @@ export default function DashboardPage() {
       />
     );
 
-    /* VIEW: WORKSPACE */
-    if (activeWorkspace) {
-      const ws      = activeWorkspace;
-      const wsId    = getId(ws);
-      const wsBoards = boardsByWs.get(wsId) || [];
-      return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <WorkspaceHeaderBar
-            ws={ws} boardCount={wsBoards.length} isGuest={guestIds.has(wsId)} l={l}
-            onOpenSettings={setSettingsWs} onOpenMembers={setMembersWs} navigate={navigate}
-          />
-          <BoardGrid
-            title={ws.name}
-            hint={ws.description || l.noDesc}
-            boards={wsBoards}
-            userId={userId}
-            workspaceId={wsId}
-            l={l}
-            onStarToggle={loadData}
-            onOpenCreate={handleOpenCreate}
-          />
-        </div>
+    if (activeNav === 'mine') {
+      return renderWorkspaceSections(
+        ownedWorkspaces,
+        lang === 'vi' ? 'Bạn chưa có workspace nào.' : 'You do not have any workspaces yet.'
+      );
+    }
+
+    if (activeNav === 'invited') {
+      return renderWorkspaceSections(
+        guestWorkspaces,
+        lang === 'vi' ? 'Bạn chưa được mời vào workspace nào.' : 'You have not been invited to any workspaces yet.'
       );
     }
 
