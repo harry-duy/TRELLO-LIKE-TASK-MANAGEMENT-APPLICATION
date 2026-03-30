@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import boardService from '@services/boardService';
 import { useUiStore } from '@store/uiStore';
+import { useAuthStore } from '@store/authStore';
 import BoardCanvas from '@components/board/BoardCanvas';
 import toast from 'react-hot-toast';
 import apiClient from '@config/api';
@@ -14,6 +16,11 @@ const L = {
     workspaceFallback: 'Workspace',
     openWorkspace: 'Về workspace',
     editBoard: 'Chỉnh sửa board',
+    deleteBoard: 'Xóa board',
+    deleteBoardTitle: 'Xác nhận xóa board',
+    deleteBoardHint: 'Board này sẽ bị xóa khỏi workspace hiện tại.',
+    deleteBoardImpact: 'Toàn bộ list và card bên trong board cũng sẽ bị xóa vĩnh viễn.',
+    deleteBoardAction: 'Xóa board',
     save: 'Lưu', cancel: 'Huỷ',
     boardName: 'Tên board', boardDescription: 'Mô tả', boardColor: 'Màu nền',
     updateSuccess: 'Đã cập nhật board', updateError: 'Không thể cập nhật board',
@@ -29,7 +36,11 @@ const L = {
     boardFallback: 'Board',
     workspaceFallback: 'Workspace',
     openWorkspace: 'Back to workspace',
-    editBoard: 'Edit board', save: 'Save', cancel: 'Cancel',
+    editBoard: 'Edit board', deleteBoard: 'Delete board', save: 'Save', cancel: 'Cancel',
+    deleteBoardTitle: 'Confirm board deletion',
+    deleteBoardHint: 'This board will be removed from the current workspace.',
+    deleteBoardImpact: 'All lists and cards inside this board will be permanently deleted.',
+    deleteBoardAction: 'Delete board',
     boardName: 'Board name', boardDescription: 'Description', boardColor: 'Background',
     updateSuccess: 'Board updated', updateError: 'Could not update board',
     boardView: 'Board view', noDescription: 'No description yet.',
@@ -248,29 +259,30 @@ function BoardEditModal({ board, l, onClose, onSaved }) {
 // ── Main page ──────────────────────────────────────────────────────
 export default function BoardPage() {
   const { boardId }   = useParams();
+  const navigate      = useNavigate();
+  const queryClient   = useQueryClient();
   const lang          = useUiStore(s => s.language) || 'vi';
   const l             = L[lang] || L.vi;
-  const [state,          setState]          = useState({ status: 'loading', board: null, error: null });
+  const user          = useAuthStore(s => s.user);
+  const authLoading    = useAuthStore(s => s.isLoading);
+  const accessToken    = useAuthStore(s => s.accessToken);
   const [isEditingBoard, setIsEditingBoard] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeletingBoard, setIsDeletingBoard] = useState(false);
   const [showActivity,   setShowActivity]   = useState(false);
+  const authReady = !authLoading && !!accessToken;
 
-  useEffect(() => {
-    let mounted = true;
-    setState({ status: 'loading', board: null, error: null });
-    boardService.getBoardDetails(boardId)
-      .then(response => {
-        if (!mounted) return;
-        const board = response?.data || response;
-        setState({ status: 'ready', board, error: null });
-      })
-      .catch(error => {
-        if (!mounted) return;
-        setState({ status: 'error', board: null, error });
-      });
-    return () => { mounted = false; };
-  }, [boardId]);
-
-  const board       = state.board;
+  const {
+    data: boardRaw,
+    isLoading,
+    isError,
+    error,
+  } = useQuery({
+    queryKey: ['board', boardId],
+    queryFn: () => boardService.getBoardDetails(boardId),
+    enabled: !!boardId && authReady,
+  });
+  const board       = boardRaw?.data ?? boardRaw;
   const workspace   = board?.workspace;
   const workspaceId = getId(workspace);
   const accent      = board?.background || '#0f766e';
@@ -281,14 +293,87 @@ export default function BoardPage() {
     return 0;
   }, [board, workspace]);
 
-  if (state.status === 'loading') return (
-    <div className="flex items-center gap-2 text-emerald-100/70"><div className="spinner border-primary-600" />{l.loading}</div>
-  );
-  if (state.status === 'error') return (
-    <div className="card border border-white/10 bg-white/10 p-4">
-      <p className="text-sm text-red-300">{state.error?.message ? `${l.loadError}: ${state.error.message}` : l.loadError}</p>
+  const canManageBoard = useMemo(() => {
+    if (!user || !board || !workspace) return false;
+    if (user.role === 'admin') return true;
+
+    const userId = getId(user)?.toString();
+    const ownerId = getId(workspace.owner)?.toString();
+    const creatorId = getId(board.createdBy)?.toString();
+
+    if (ownerId === userId) return true;
+    if (creatorId === userId) return true;
+
+    const member = Array.isArray(workspace.members)
+      ? workspace.members.find((m) => getId(m.user)?.toString() === userId)
+      : null;
+
+    return ['admin', 'staff'].includes(member?.role);
+  }, [user, board, workspace]);
+
+  if (!authReady || isLoading) return (
+    <div className="space-y-5 animate-pulse">
+      {/* Header skeleton */}
+      <div className="rounded-[24px] border border-white/10 bg-white/[0.04] px-5 py-4">
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:16 }}>
+          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+            <div style={{ width:120, height:14, borderRadius:8, background:'rgba(255,255,255,.08)' }} />
+            <div style={{ width:240, height:28, borderRadius:10, background:'rgba(255,255,255,.1)' }} />
+            <div style={{ width:180, height:13, borderRadius:8, background:'rgba(255,255,255,.06)' }} />
+          </div>
+          <div style={{ display:'flex', gap:8 }}>
+            {[80, 100, 80].map((w, i) => (
+              <div key={i} style={{ width:w, height:32, borderRadius:10, background:'rgba(255,255,255,.07)' }} />
+            ))}
+          </div>
+        </div>
+      </div>
+      {/* Board canvas skeleton */}
+      <div className="rounded-[24px] border border-white/10 bg-white/[0.03] p-4" style={{ height:480 }}>
+        <div style={{ display:'flex', gap:12, height:'100%' }}>
+          {[1,2,3].map(i => (
+            <div key={i} style={{ width:280, flexShrink:0, borderRadius:14, background:'rgba(255,255,255,.05)', padding:12, display:'flex', flexDirection:'column', gap:10 }}>
+              <div style={{ width:120, height:18, borderRadius:8, background:'rgba(255,255,255,.1)' }} />
+              {[60,80,55].map((h, j) => (
+                <div key={j} style={{ borderRadius:10, background:'rgba(255,255,255,.07)', height:h }} />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
+
+  if (isError) {
+    const is403 = error?.response?.status === 403 || error?.status === 403 || error?.message?.includes('403');
+    const is404 = error?.response?.status === 404 || error?.status === 404;
+    return (
+      <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:400, gap:16, textAlign:'center' }}>
+        <div style={{ fontSize:56 }}>{is403 ? '🔒' : '🔍'}</div>
+        <h2 style={{ fontSize:22, fontWeight:700, color:'white', margin:0 }}>
+          {is403
+            ? (lang === 'vi' ? 'Bạn không có quyền truy cập board này' : 'You do not have access to this board')
+            : is404
+              ? (lang === 'vi' ? 'Không tìm thấy board' : 'Board not found')
+              : l.loadError}
+        </h2>
+        <p style={{ fontSize:14, color:'rgba(255,255,255,.45)', maxWidth:360, margin:0 }}>
+          {is403
+            ? (lang === 'vi' ? 'Board này là riêng tư hoặc bạn chưa được mời tham gia.' : 'This board is private or you have not been invited.')
+            : is404
+              ? (lang === 'vi' ? 'Board đã bị xóa hoặc link không đúng.' : 'This board may have been deleted or the link is incorrect.')
+              : error?.message || ''}
+        </p>
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={() => navigate('/dashboard')}
+        >
+          {lang === 'vi' ? '← Về Dashboard' : '← Back to Dashboard'}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -329,9 +414,20 @@ export default function BoardPage() {
             >
               📋 {showActivity ? l.hideActivity : l.showActivity}
             </button>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setIsEditingBoard(true)}>
-              {l.editBoard}
-            </button>
+            {canManageBoard && (
+              <>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setIsEditingBoard(true)}>
+                  {l.editBoard}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setShowDeleteConfirm(true)}
+                >
+                  {l.deleteBoard}
+                </button>
+              </>
+            )}
             {workspaceId && (
               <Link to={`/workspace/${workspaceId}`} className="btn btn-secondary btn-sm">
                 {l.openWorkspace}
@@ -355,8 +451,85 @@ export default function BoardPage() {
         <BoardEditModal
           board={board} l={l}
           onClose={() => setIsEditingBoard(false)}
-          onSaved={(nextBoard) => setState(prev => ({ ...prev, board: { ...prev.board, ...nextBoard } }))}
+          onSaved={(nextBoard) => {
+            queryClient.setQueryData(['board', boardId], (prev) => {
+              const currentBoard = prev?.data ?? prev;
+              if (!currentBoard) return prev;
+              const mergedBoard = { ...currentBoard, ...nextBoard };
+              return prev?.data ? { ...prev, data: mergedBoard } : mergedBoard;
+            });
+          }}
         />
+      )}
+
+      {showDeleteConfirm && (
+        <div className="modal-overlay" onClick={() => !isDeletingBoard && setShowDeleteConfirm(false)}>
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: 440,
+              padding: 22,
+              background: 'linear-gradient(160deg,rgba(26,12,18,.98),rgba(20,14,29,.98))',
+              border: '1px solid rgba(248,113,113,.22)',
+            }}
+          >
+            <div className="flex items-start gap-3">
+              <div
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 14,
+                  background: 'rgba(239,68,68,.16)',
+                  color: '#f87171',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 18,
+                  fontWeight: 700,
+                  flexShrink: 0,
+                }}
+              >
+                !
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-lg font-semibold text-white">{l.deleteBoardTitle}</h3>
+                <p className="mt-1 text-sm text-white/65">{l.deleteBoardHint}</p>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.08em] text-red-300/80">
+                {l.boardFallback}
+              </div>
+              <div className="mt-2 break-words text-base font-semibold text-white">
+                {board?.name || l.boardFallback}
+              </div>
+              <div className="mt-3 text-sm text-white/55">
+                {l.deleteBoardImpact}
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={isDeletingBoard}
+              >
+                {l.cancel}
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger btn-sm"
+                onClick={handleDeleteBoard}
+                disabled={isDeletingBoard}
+              >
+                {isDeletingBoard ? l.loading : l.deleteBoardAction}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

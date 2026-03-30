@@ -3,13 +3,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@store/authStore';
 import { useUiStore } from '@store/uiStore';
-import AIAssistantWidget from '@components/ai/AIAssistantWidget';
 import ProfileDropdown from '@components/layout/ProfileDropdown';
 import NotificationBell from '@components/layout/NotificationBell';
 import workspaceService from '@services/workspaceService';
 import boardService from '@services/boardService';
 import apiClient from '@config/api';
 import toast from 'react-hot-toast';
+import Footer from '@components/layout/Footer';
 
 /* ═══════════════════════════════════════════
    i18n dictionary
@@ -36,7 +36,6 @@ const L = {
     searchTitle:   'BOARDS',
     searchEmpty:   'Không tìm thấy kết quả',
     searchType:    'Nhập ít nhất 2 ký tự...',
-    aiAssist:      'AI Assist',
     createNew:     '+ Tạo mới',
     createTitle:   'Tạo mới',
     createBoard:   'Board',
@@ -78,7 +77,6 @@ const L = {
     searchTitle:   'BOARDS',
     searchEmpty:   'No results found',
     searchType:    'Type at least 2 characters...',
-    aiAssist:      'AI Assist',
     createNew:     '+ New',
     createTitle:   'Create',
     createBoard:   'Board',
@@ -218,16 +216,13 @@ function BoardItem({ board, userId, onClose, onStarChange, l }) {
     setStarred(next);
     setBusy(true);
     try {
-      const res  = await apiClient.get(`/boards/${board._id}`);
-      const cur  = res?.data ?? res;
-      const list = cur?.starredBy || [];
-      const newList = next
-        ? (list.some(id=>(id?._id||id)?.toString()===userId?.toString()) ? list : [...list, userId])
-        : list.filter(id => (id?._id||id)?.toString() !== userId?.toString());
-      await apiClient.put(`/boards/${board._id}`, { starredBy: newList });
+      await boardService.toggleStar(board._id);
       if (onStarChange) onStarChange();
-    } catch { setStarred(!next); }
-    finally { setBusy(false); }
+    } catch {
+      setStarred(!next);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -596,13 +591,14 @@ export default function DashboardLayout({ children }) {
   const l    = L[lang] || L.vi;
 
   const navigate = useNavigate();
+  const location = useLocation();
   const [showCreate, setShowCreate] = useState(false);
-  const [aiOpen,     setAiOpen]     = useState(false);
 
   const handleLogout = async () => { await logout(); navigate('/login'); };
+  const isBoardPage = location.pathname.startsWith('/board/');
 
   return (
-    <div className="min-h-screen flex flex-col board-surface text-slate-100">
+    <div className={`min-h-screen flex flex-col text-slate-100 ${isBoardPage ? 'board-surface' : 'bg-slate-900'}`}>
 
       {/* ─── Navbar ─── */}
       <header style={{
@@ -636,22 +632,6 @@ export default function DashboardLayout({ children }) {
             {/* Language toggle */}
             <LangToggle />
 
-            {/* AI Assist */}
-            <button type="button" onClick={() => setAiOpen(v=>!v)}
-              className="hidden md:inline-flex"
-              style={{
-                alignItems:'center', gap:6, borderRadius:999,
-                background:'rgba(52,211,153,.12)',
-                border:'1px solid rgba(52,211,153,.22)',
-                padding:'6px 12px', fontSize:11, fontWeight:600,
-                color:'#6ee7b7', cursor:'pointer', transition:'all .2s',
-              }}
-              onMouseEnter={e=>e.currentTarget.style.background='rgba(52,211,153,.22)'}
-              onMouseLeave={e=>e.currentTarget.style.background='rgba(52,211,153,.12)'}>
-              <span style={{ width:6, height:6, borderRadius:'50%', background:'#34d399', animation:'nav-pulse 1.5s ease-in-out infinite', display:'inline-block' }}/>
-              {l.aiAssist}
-            </button>
-
             {/* ✅ Notification Bell — hiển thị ngoài navbar */}
             <NotificationBell />
 
@@ -677,17 +657,20 @@ export default function DashboardLayout({ children }) {
       </header>
 
       {/* ─── Page content ─── */}
-      <main style={{ flex:1, maxWidth:1600, width:'100%', margin:'0 auto', padding:'24px 20px' }}>
-        {children}
+      <main style={{ flex:1, width:'100%', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ maxWidth:1600, width:'100%', margin:'0 auto', padding:'24px 20px', flex:1 }}>
+          {children}
+        </div>
       </main>
 
+      {/* ─── Footer ─── */}
+      {!isBoardPage && <Footer />}
+
       {showCreate && <CreateModal onClose={() => setShowCreate(false)} l={l} />}
-      <AIAssistantWidget forceOpen={aiOpen} onToggle={() => setAiOpen(v=>!v)} />
 
       {/* Global nav styles */}
       <style>{`
         @keyframes nav-spin   { to{transform:rotate(360deg)} }
-        @keyframes nav-pulse  { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.6;transform:scale(.85)} }
         @keyframes nav-modal-in { from{opacity:0;transform:scale(.93) translateY(14px)} to{opacity:1;transform:scale(1) translateY(0)} }
 
         .nav-pill {

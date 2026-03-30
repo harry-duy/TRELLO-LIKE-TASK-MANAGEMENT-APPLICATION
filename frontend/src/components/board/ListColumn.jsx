@@ -6,12 +6,17 @@ import listService from '@services/listService';
 import { useTranslation } from '@hooks/useTranslation';
 import { SortableCard } from './SortableCard';
 
-export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdated, columnWidth }) {
+export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdated, columnWidth, allLists = [] }) {
   const { t } = useTranslation();
   const [isAdding, setIsAdding] = useState(false);
   const [title, setTitle] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(list.name);
+
+  // State cho modal chuyển card khi xóa list
+  const [showMoveModal, setShowMoveModal] = useState(false);
+  const [targetListId, setTargetListId]   = useState('');
+  const [isDeleting, setIsDeleting]       = useState(false);
 
   const {
     attributes,
@@ -52,16 +57,33 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
     }
   };
 
-  const handleDeleteList = async () => {
-    const ok = window.confirm(t('deleteListConfirm'));
-    if (!ok) return;
+  const activeCards   = useMemo(() => cards.filter(c => !c.isArchived), [cards]);
+  const otherLists    = useMemo(() => allLists.filter(l => l._id !== list._id), [allLists, list._id]);
+
+  const handleDeleteList = () => {
+    if (activeCards.length > 0) {
+      // Còn card → mở modal chọn list đích
+      setTargetListId(otherLists[0]?._id || '');
+      setShowMoveModal(true);
+      setIsEditing(false);
+    } else {
+      // Không có card → xác nhận rồi xóa luôn
+      if (!window.confirm(t('deleteListConfirm'))) return;
+      doDeleteList(null);
+    }
+  };
+
+  const doDeleteList = async (moveToListId) => {
+    setIsDeleting(true);
     try {
-      await listService.deleteList(list._id);
+      await listService.deleteList(list._id, moveToListId || null);
+      setShowMoveModal(false);
       setIsEditing(false);
       onListUpdated?.();
     } catch (err) {
       console.error(t('deleteListError'), err);
     }
+    setIsDeleting(false);
   };
 
   return (
@@ -192,7 +214,7 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
             <div>
               <textarea
                 autoFocus
-                className="w-full p-2 border rounded-lg shadow-sm mb-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                className="mb-2 w-full rounded-xl border border-white/12 bg-slate-950/85 px-3 py-2 text-sm text-white shadow-sm placeholder:text-white/35 focus:border-emerald-400/60 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
                 placeholder={t('cardTitlePlaceholder')}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
@@ -212,6 +234,7 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
                   borderRadius: '12px',
                   fontSize: 14,
                   boxShadow: '0 8px 20px rgba(0,0,0,.18)',
+                  color: 'white',
                 }}
               />
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -314,6 +337,106 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
                   {t('save')}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal chuyển card khi xóa list còn card ── */}
+      {showMoveModal && (
+        <div className="modal-overlay" onClick={() => !isDeleting && setShowMoveModal(false)}>
+          <div
+            className="modal-content"
+            style={{ maxWidth: 400, padding: 24, background: 'rgba(13,22,41,.98)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+              <span style={{ fontSize: 22 }}>📦</span>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'white' }}>
+                  Chuyển card trước khi xóa
+                </h3>
+                <p style={{ margin: '2px 0 0', fontSize: 12, color: 'rgba(255,255,255,.45)' }}>
+                  List <strong style={{ color: 'rgba(255,255,255,.8)' }}>"{list.name}"</strong> đang chứa{' '}
+                  <strong style={{ color: '#fbbf24' }}>{activeCards.length} card</strong>.
+                </p>
+              </div>
+            </div>
+
+            <p style={{ fontSize: 13, color: 'rgba(255,255,255,.6)', marginBottom: 14 }}>
+              Chọn list để chuyển toàn bộ card sang trước khi xóa:
+            </p>
+
+            {otherLists.length === 0 ? (
+              <div style={{ padding: '12px 0', textAlign: 'center' }}>
+                <p style={{ fontSize: 13, color: '#f87171', margin: 0 }}>
+                  Không có list nào khác trong board này.
+                </p>
+                <p style={{ fontSize: 12, color: 'rgba(255,255,255,.35)', marginTop: 6 }}>
+                  Hãy tạo thêm ít nhất một list mới trước khi xóa list này.
+                </p>
+              </div>
+            ) : (
+              <>
+                <select
+                  className="input"
+                  style={{ width: '100%', marginBottom: 16 }}
+                  value={targetListId}
+                  onChange={(e) => setTargetListId(e.target.value)}
+                >
+                  {otherLists.map((l) => (
+                    <option key={l._id} value={l._id}>
+                      {l.name}
+                      {l.cards?.length ? ` (${l.cards.length} card)` : ''}
+                    </option>
+                  ))}
+                </select>
+
+                {/* Preview */}
+                {targetListId && (
+                  <div style={{
+                    padding: '10px 14px',
+                    borderRadius: 10,
+                    background: 'rgba(52,211,153,.08)',
+                    border: '1px solid rgba(52,211,153,.2)',
+                    fontSize: 12,
+                    color: 'rgba(167,243,208,.8)',
+                    marginBottom: 16,
+                    lineHeight: 1.6,
+                  }}>
+                    {activeCards.length} card từ <strong>"{list.name}"</strong> sẽ được chuyển sang{' '}
+                    <strong>"{otherLists.find(l => l._id === targetListId)?.name}"</strong>,
+                    sau đó list <strong>"{list.name}"</strong> sẽ bị xóa vĩnh viễn.
+                  </div>
+                )}
+              </>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setShowMoveModal(false)}
+                disabled={isDeleting}
+              >
+                Huỷ
+              </button>
+              {otherLists.length > 0 && (
+                <button
+                  type="button"
+                  className="btn btn-danger btn-sm"
+                  disabled={!targetListId || isDeleting}
+                  onClick={() => doDeleteList(targetListId)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                >
+                  {isDeleting ? (
+                    <><div className="spinner" style={{ width: 12, height: 12 }} /> Đang xử lý...</>
+                  ) : (
+                    'Chuyển card & Xóa list'
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>

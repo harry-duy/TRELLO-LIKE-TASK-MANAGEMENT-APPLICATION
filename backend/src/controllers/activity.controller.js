@@ -1,11 +1,38 @@
 const mongoose = require('mongoose');
-const Activity = require('../models/activity.model');
+const Activity  = require('../models/activity.model');
+const Board     = require('../models/board.model');
+const Card      = require('../models/card.model');
+const Workspace = require('../models/workspace.model');
 const { asyncHandler, AppError } = require('../middleware/errorHandler');
+
+// Shared helper – reused across multiple controllers
+const ensureBoardAccess = async (boardId, user) => {
+  const board = await Board.findById(boardId).select('workspace');
+  if (!board) throw new AppError('Board not found', 404);
+  if (user.role === 'admin') return board;
+  const workspace = await Workspace.findById(board.workspace).select('owner members');
+  if (!workspace) throw new AppError('Workspace not found', 404);
+  const isOwner  = workspace.owner?.toString() === user._id.toString();
+  const isMember = (workspace.members || []).some((m) => m.user?.toString() === user._id.toString());
+  if (!isOwner && !isMember) throw new AppError('You do not have access to this board', 403);
+  return board;
+};
+
+const ensureWorkspaceAccess = async (workspaceId, user) => {
+  if (user.role === 'admin') return;
+  const workspace = await Workspace.findById(workspaceId).select('owner members');
+  if (!workspace) throw new AppError('Workspace not found', 404);
+  const isOwner  = workspace.owner?.toString() === user._id.toString();
+  const isMember = (workspace.members || []).some((m) => m.user?.toString() === user._id.toString());
+  if (!isOwner && !isMember) throw new AppError('You do not have access to this workspace', 403);
+};
 
 // @desc    Get board activities (paginated)
 // @route   GET /api/activities/board/:boardId
 exports.getBoardActivities = asyncHandler(async (req, res, next) => {
   const { boardId } = req.params;
+  await ensureBoardAccess(boardId, req.user);
+
   const page  = Math.max(parseInt(req.query.page  || '1',  10), 1);
   const limit = Math.min(parseInt(req.query.limit || '20', 10), 100);
   const skip  = (page - 1) * limit;
@@ -32,6 +59,8 @@ exports.getBoardActivities = asyncHandler(async (req, res, next) => {
 // @route   GET /api/activities/workspace/:workspaceId
 exports.getWorkspaceActivities = asyncHandler(async (req, res, next) => {
   const { workspaceId } = req.params;
+  await ensureWorkspaceAccess(workspaceId, req.user);
+
   const page  = Math.max(parseInt(req.query.page  || '1',  10), 1);
   const limit = Math.min(parseInt(req.query.limit || '20', 10), 100);
   const skip  = (page - 1) * limit;
@@ -57,6 +86,10 @@ exports.getWorkspaceActivities = asyncHandler(async (req, res, next) => {
 // @desc    Get card activities
 // @route   GET /api/activities/card/:cardId
 exports.getCardActivities = asyncHandler(async (req, res, next) => {
+  const card = await Card.findById(req.params.cardId).select('board');
+  if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
+
   const activities = await Activity.getCardActivities(req.params.cardId);
   res.status(200).json({ success: true, data: activities });
 });
@@ -65,6 +98,8 @@ exports.getCardActivities = asyncHandler(async (req, res, next) => {
 // @route   GET /api/activities/analytics/:workspaceId
 exports.getWorkspaceAnalytics = asyncHandler(async (req, res, next) => {
   const { workspaceId } = req.params;
+  await ensureWorkspaceAccess(workspaceId, req.user);
+
   const days  = Math.min(Math.max(parseInt(req.query.days || '7', 10), 1), 90);
   const startDate = new Date();
   startDate.setHours(0, 0, 0, 0);

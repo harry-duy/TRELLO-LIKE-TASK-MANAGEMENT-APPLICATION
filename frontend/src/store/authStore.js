@@ -13,13 +13,21 @@ export const useAuthStore = create(
       // Initialize auth state
       initialize: async () => {
         try {
-          const token = get().accessToken;
-          if (token) {
-            const user = await authService.getMe();
-            set({ user, isAuthenticated: true, isLoading: false });
-          } else {
-            set({ isLoading: false });
+          let token = get().accessToken;
+
+          // If there is no in-memory/persisted access token yet, try restoring
+          // the session from the refresh-token cookie first.
+          if (!token) {
+            try {
+              token = await get().refreshToken();
+            } catch (error) {
+              set({ user: null, accessToken: null, isAuthenticated: false, isLoading: false });
+              return;
+            }
           }
+
+          const user = await authService.getMe();
+          set({ user, accessToken: token, isAuthenticated: true, isLoading: false });
         } catch (error) {
           set({ user: null, accessToken: null, isAuthenticated: false, isLoading: false });
         }

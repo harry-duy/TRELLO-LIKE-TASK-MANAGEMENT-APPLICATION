@@ -51,4 +51,10 @@ router.patch(
   workspaceController.updateMemberRole
 );
 
+router.patch(
+  '/:workspaceId/transfer-ownership',
+  protect, isWorkspaceMember,
+  workspaceController.transferOwnership
+);
+
 module.exports = router;

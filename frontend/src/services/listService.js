@@ -11,8 +11,10 @@ const listService = {
     return response?.data ?? response;
   },
 
-  deleteList: async (listId) => {
-    const response = await apiClient.delete(`/lists/${listId}`);
+  deleteList: async (listId, targetListId = null) => {
+    const response = await apiClient.delete(`/lists/${listId}`, {
+      data: targetListId ? { targetListId } : {},
+    });
     return response?.data ?? response;
   },
 

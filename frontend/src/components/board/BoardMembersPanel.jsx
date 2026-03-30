@@ -15,9 +15,12 @@ const L = {
     invite:      'Mời thành viên',
     invitePh:    'Nhập email người dùng',
     inviteBtn:   'Mời',
+    suggestTitle:'Thêm từ workspace',
+    suggestHint: 'Chọn nhanh thành viên đã có trong workspace',
+    addToBoard:  'Thêm vào board',
+    noSuggestions:'Không còn thành viên workspace nào để thêm',
     roleLabel:   'Role',
     owner:       'Chủ sở hữu',
-    admin:       'Admin',
     member:      'Thành viên',
     staff:       'Staff',
     remove:      'Xoá',
@@ -39,9 +42,12 @@ const L = {
     invite:      'Invite member',
     invitePh:    'Enter user email',
     inviteBtn:   'Invite',
+    suggestTitle:'Add from workspace',
+    suggestHint: 'Quick-pick people already in this workspace',
+    addToBoard:  'Add to board',
+    noSuggestions:'No more workspace members to add',
     roleLabel:   'Role',
     owner:       'Owner',
-    admin:       'Admin',
     member:      'Member',
     staff:       'Staff',
     remove:      'Remove',
@@ -101,37 +107,75 @@ export default function BoardMembersPanel({ boardId, workspaceId, lang = 'vi', o
   const { user } = useAuthStore();
   const [workspace, setWorkspace]     = useState(null);
   const [members, setMembers]         = useState([]);
+  const [boardMembers, setBoardMembers] = useState([]);
   const [loading, setLoading]         = useState(true);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole]   = useState('member');
   const [inviting, setInviting]       = useState(false);
+  const [quickAddingId, setQuickAddingId] = useState(null);
   const [copied, setCopied]           = useState(false);
   const ref = useRef(null);
 
-  // Kiểm tra user hiện tại có phải owner hoặc workspace admin không
+  // Kiểm tra user hiện tại có phải owner hoặc workspace admin/staff không
   const isOwner = workspace?.owner?._id?.toString() === user?._id?.toString()
     || workspace?.owner?.toString() === user?._id?.toString();
 
   const isWorkspaceAdmin = isOwner || (workspace?.members || []).some(
     (m) => (m.user?._id || m.user)?.toString() === user?._id?.toString()
-      && m.role === 'admin'
+      && ['admin', 'staff'].includes(m.role)
   );
+
+  // Chỉ lấy ID của những người đã là board member thực sự (từ board.members API)
+  const boardMemberIds = new Set(
+    boardMembers.map((m) => (m.user?._id || m.user)?.toString()).filter(Boolean)
+  );
+
+  // Thêm workspace owner vào boardMemberIds vì owner luôn có quyền truy cập
+  const ownerId = (workspace?.owner?._id || workspace?.owner)?.toString();
+  if (ownerId) boardMemberIds.add(ownerId);
+
+  const workspaceCandidates = [
+    ...((workspace?.members || []).map((m) => ({ user: m.user, role: m.role }))),
+  ]
+    .filter((m, index, list) => {
+      const memberId = (m.user?._id || m.user)?.toString();
+      if (!memberId || boardMemberIds.has(memberId)) return false;
+      // dedup
+      return index === list.findIndex((item) => ((item.user?._id || item.user)?.toString() === memberId));
+    });
 
   // Tải danh sách members
   const loadMembers = async () => {
     setLoading(true);
     try {
-      const res = await apiClient.get(`/workspaces/${workspaceId}`);
-      const ws  = res?.data || res;
+      const [wsRes, boardMembersRes] = await Promise.all([
+        apiClient.get(`/workspaces/${workspaceId}`),
+        apiClient.get(`/boards/${boardId}/members`),
+      ]);
+      const ws = wsRes?.data ?? wsRes;
+      const rawBoardMembers = Array.isArray(boardMembersRes?.data)
+        ? boardMembersRes.data
+        : Array.isArray(boardMembersRes)
+          ? boardMembersRes
+          : [];
+
       setWorkspace(ws);
+      setBoardMembers(rawBoardMembers);
+
+      // Danh sách hiển thị trong member list: owner + board members (không trùng owner)
+      const ownerIdStr = (ws.owner?._id || ws.owner)?.toString();
+      const nonOwnerBoardMembers = rawBoardMembers.filter(
+        (m) => (m.user?._id || m.user)?.toString() !== ownerIdStr
+      );
+
       setMembers([
         { user: ws.owner, role: 'owner' },
-        ...(ws.members || []).filter(
-          (m) => (m.user?._id || m.user)?.toString() !== (ws.owner?._id || ws.owner)?.toString()
-        ),
+        ...nonOwnerBoardMembers,
       ]);
-    } catch {
+    } catch (err) {
+      console.error('[BoardMembersPanel] loadMembers error:', err);
       setMembers([]);
+      setBoardMembers([]);
     }
     setLoading(false);
   };
@@ -151,8 +195,7 @@ export default function BoardMembersPanel({ boardId, workspaceId, lang = 'vi', o
 
     setInviting(true);
     try {
-      // ✅ Gọi đúng workspace route — KHÔNG dùng /admin/workspaces
-      await apiClient.post(`/workspaces/${workspaceId}/members`, {
+      await apiClient.post(`/boards/${boardId}/members`, {
         email: inviteEmail.trim().toLowerCase(),
         role:  inviteRole,
       });
@@ -166,6 +209,28 @@ export default function BoardMembersPanel({ boardId, workspaceId, lang = 'vi', o
     setInviting(false);
   };
 
+  const handleQuickAdd = async (targetUserId) => {
+    if (!targetUserId) return;
+
+    if (!isWorkspaceAdmin) {
+      toast.error(l.noPermission);
+      return;
+    }
+
+    setQuickAddingId(targetUserId);
+    try {
+      await apiClient.post(`/boards/${boardId}/members`, {
+        userId: targetUserId,
+        role: inviteRole,
+      });
+      toast.success(l.inviteOk);
+      loadMembers();
+    } catch (err) {
+      toast.error(err?.message || l.inviteFail);
+    }
+    setQuickAddingId(null);
+  };
+
   // Xoá member
   const handleRemove = async (userId) => {
     if (!isWorkspaceAdmin) {
@@ -174,8 +239,7 @@ export default function BoardMembersPanel({ boardId, workspaceId, lang = 'vi', o
     }
 
     try {
-      // ✅ Gọi đúng workspace route
-      await apiClient.delete(`/workspaces/${workspaceId}/members/${userId}`);
+      await apiClient.delete(`/boards/${boardId}/members/${userId}`);
       toast.success(l.member + ' removed');
       loadMembers();
     } catch (err) {
@@ -213,7 +277,7 @@ export default function BoardMembersPanel({ boardId, workspaceId, lang = 'vi', o
   const getRoleInfo = (role) => {
     const map = {
       owner:  { label: l.owner,  color: '#fbbf24' },
-      admin:  { label: l.admin,  color: '#60a5fa' },
+      admin:  { label: l.staff,  color: '#a78bfa' },
       staff:  { label: l.staff,  color: '#a78bfa' },
       member: { label: l.member, color: 'rgba(255,255,255,.4)' },
     };
@@ -310,7 +374,6 @@ export default function BoardMembersPanel({ boardId, workspaceId, lang = 'vi', o
                 }}
               >
                 <option value="member">{l.member}</option>
-                <option value="admin">{l.admin}</option>
                 <option value="staff">{l.staff}</option>
               </select>
               <button
@@ -328,6 +391,99 @@ export default function BoardMembersPanel({ boardId, workspaceId, lang = 'vi', o
               >
                 {inviting ? '...' : l.inviteBtn}
               </button>
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <p style={{
+                fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+                letterSpacing: '.08em', color: 'rgba(255,255,255,.42)', margin: '0 0 4px',
+              }}>
+                {l.suggestTitle}
+              </p>
+              <p style={{ fontSize: 11, color: 'rgba(255,255,255,.38)', margin: '0 0 8px' }}>
+                {l.suggestHint}
+              </p>
+
+              {workspaceCandidates.length === 0 ? (
+                <div style={{
+                  padding: '10px 12px',
+                  borderRadius: 10,
+                  border: '1px dashed rgba(255,255,255,.1)',
+                  background: 'rgba(255,255,255,.03)',
+                  color: 'rgba(255,255,255,.38)',
+                  fontSize: 12,
+                }}>
+                  {l.noSuggestions}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 180, overflowY: 'auto', paddingRight: 2 }}>
+                  {workspaceCandidates.map((candidate) => {
+                    const candidateUser = candidate.user;
+                    const candidateId = (candidateUser?._id || candidateUser)?.toString();
+                    const roleInfo = getRoleInfo(candidate.role);
+
+                    return (
+                      <div
+                        key={candidateId}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 10,
+                          padding: '8px 10px',
+                          borderRadius: 10,
+                          border: '1px solid rgba(255,255,255,.08)',
+                          background: 'rgba(255,255,255,.04)',
+                        }}
+                      >
+                        <Avatar name={candidateUser?.name} avatar={candidateUser?.avatar} size={32} />
+
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{
+                            color: 'white', fontSize: 12, fontWeight: 600,
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0,
+                          }}>
+                            {candidateUser?.name || candidateId}
+                          </p>
+                          <p style={{
+                            color: 'rgba(255,255,255,.4)', fontSize: 11,
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: '2px 0 0',
+                          }}>
+                            {candidateUser?.email || ''}
+                          </p>
+                        </div>
+
+                        <span style={{
+                          fontSize: 10, fontWeight: 700, color: roleInfo.color,
+                          background: `${roleInfo.color}20`, borderRadius: 999,
+                          padding: '2px 8px', whiteSpace: 'nowrap',
+                        }}>
+                          {roleInfo.label}
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={() => handleQuickAdd(candidateId)}
+                          disabled={quickAddingId === candidateId}
+                          style={{
+                            padding: '6px 10px',
+                            borderRadius: 8,
+                            border: 'none',
+                            background: 'linear-gradient(135deg,#10b981,#059669)',
+                            color: 'white',
+                            cursor: quickAddingId === candidateId ? 'wait' : 'pointer',
+                            fontSize: 11,
+                            fontWeight: 700,
+                            whiteSpace: 'nowrap',
+                            opacity: quickAddingId === candidateId ? 0.7 : 1,
+                          }}
+                        >
+                          {quickAddingId === candidateId ? '...' : l.addToBoard}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -393,7 +549,6 @@ export default function BoardMembersPanel({ boardId, workspaceId, lang = 'vi', o
                       }}
                     >
                       <option value="member">{l.member}</option>
-                      <option value="admin">{l.admin}</option>
                       <option value="staff">{l.staff}</option>
                     </select>
                   ) : (

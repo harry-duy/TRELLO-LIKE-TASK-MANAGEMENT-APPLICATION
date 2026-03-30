@@ -45,7 +45,7 @@ export default function AIAssistantWidget({ forceOpen, onToggle }) {
 
   const chatMutation = useMutation({
     mutationFn: ({ message, contextBoardId }) =>
-      aiService.chatAssistant({ message, boardId: contextBoardId }),
+      aiService.chatAssistant({ message, boardId: contextBoardId, language }),
     onSuccess: (response) => {
       const answer = response?.answer || t('aiAssistantNoAnswer');
       setMessages((prev) => [...prev, { role: 'assistant', content: answer }]);
@@ -76,7 +76,7 @@ export default function AIAssistantWidget({ forceOpen, onToggle }) {
     if (!message) return;
     setMessages((prev) => [...prev, { role: 'user', content: message }]);
     if (!overrideText) setInput('');
-    chatMutation.mutate({ message, contextBoardId: boardId });
+    chatMutation.mutate({ message, contextBoardId: boardId, language });
   };
 
   return (

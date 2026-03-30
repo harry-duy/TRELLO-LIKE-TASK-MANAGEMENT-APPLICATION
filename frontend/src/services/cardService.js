@@ -31,6 +31,16 @@ const cardService = {
     return response?.data ?? response;
   },
 
+  updateComment: async (cardId, commentId, content) => {
+    const response = await apiClient.put(`/cards/${cardId}/comments/${commentId}`, { content });
+    return response?.data ?? response;
+  },
+
+  deleteComment: async (cardId, commentId) => {
+    const response = await apiClient.delete(`/cards/${cardId}/comments/${commentId}`);
+    return response?.data ?? response;
+  },
+
   addChecklistItem: async (cardId, text) => {
     const response = await apiClient.post(`/cards/${cardId}/checklist`, { text });
     return response?.data ?? response;
@@ -52,6 +62,31 @@ const cardService = {
     const response = await apiClient.get('/cards/search', {
       params: { boardId, ...filters },
     });
+    return response?.data ?? response;
+  },
+
+  getArchived: async (boardId) => {
+    const response = await apiClient.get('/cards/archived', { params: { boardId } });
+    return response?.data ?? response;
+  },
+
+  restore: async (cardId) => {
+    const response = await apiClient.put(`/cards/${cardId}/restore`);
+    return response?.data ?? response;
+  },
+
+  duplicate: async (cardId) => {
+    const response = await apiClient.post(`/cards/${cardId}/duplicate`);
+    return response?.data ?? response;
+  },
+
+  toggleWatch: async (cardId) => {
+    const response = await apiClient.post(`/cards/${cardId}/watch`);
+    return response?.data ?? response;
+  },
+
+  getActivity: async (cardId) => {
+    const response = await apiClient.get(`/cards/${cardId}/activity`);
     return response?.data ?? response;
   },
 };

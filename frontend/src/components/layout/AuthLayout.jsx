@@ -58,22 +58,22 @@ export default function AuthLayout({ children }) {
 
           <div className="mt-16">
             <h2 className="text-4xl font-bold text-white leading-tight">
-              Quản lý công việc<br/>
+              {t('auth_layout_title1')}<br/>
               <span style={{ background: 'linear-gradient(90deg, #a78bfa, #60a5fa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                thông minh hơn.
+                {t('auth_layout_title2')}
               </span>
             </h2>
             <p className="mt-4 text-base leading-relaxed" style={{ color: 'rgba(255,255,255,0.5)' }}>
-              Tổ chức dự án, cộng tác nhóm và theo dõi tiến độ — tất cả trong một nơi.
+              {t('auth_layout_desc')}
             </p>
           </div>
 
           {/* Features */}
           <div className="mt-12 space-y-4">
             {[
-              { icon: '⚡', text: 'Kéo thả thẻ trực quan theo Kanban' },
-              { icon: '🔴', text: 'Cập nhật thời gian thực qua Socket.io' },
-              { icon: '👥', text: 'Cộng tác nhóm không giới hạn' },
+              { icon: '⚡', text: t('auth_layout_feature1') },
+              { icon: '🔴', text: t('auth_layout_feature2') },
+              { icon: '👥', text: t('auth_layout_feature3') },
             ].map((f) => (
               <div key={f.text} className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center text-sm shrink-0"
@@ -90,10 +90,10 @@ export default function AuthLayout({ children }) {
         <div className="rounded-2xl p-4 space-y-3"
           style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
           <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.3)' }}>
-            Dự án của bạn
+            {t('auth_layout_projects')}
           </p>
           <div className="grid grid-cols-3 gap-2">
-            {['Cần làm', 'Đang làm', 'Hoàn thành'].map((col, i) => (
+            {[t('auth_layout_todo'), t('auth_layout_doing'), t('auth_layout_done')].map((col, i) => (
               <div key={col} className="rounded-xl p-2"
                 style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.06)' }}>
                 <div className="flex items-center gap-1.5 mb-2">
@@ -137,7 +137,7 @@ export default function AuthLayout({ children }) {
           </div>
 
           <p className="text-center text-xs mt-6" style={{ color: 'rgba(255,255,255,0.25)' }}>
-            © {new Date().getFullYear()} TaskFlow · Trello-like Task Management
+            {t('auth_layout_footer', { year: new Date().getFullYear() })}
           </p>
         </div>
       </div>

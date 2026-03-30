@@ -31,6 +31,24 @@ const boardSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
     },
+    members: [
+      {
+        user: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'User',
+          required: true,
+        },
+        role: {
+          type: String,
+          enum: ['admin', 'staff', 'member'],
+          default: 'member',
+        },
+        addedAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
     starredBy: [
       {
         type: mongoose.Schema.Types.ObjectId,

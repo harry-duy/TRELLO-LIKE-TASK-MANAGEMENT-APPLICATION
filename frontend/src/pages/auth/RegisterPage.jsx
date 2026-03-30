@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@store/authStore';
 import toast from 'react-hot-toast';
+import { useTranslation } from '../../hooks/useTranslation';
 
 const BACKEND_URL =
   import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5001';
@@ -23,21 +24,22 @@ export default function RegisterPage() {
   const [focused, setFocused] = useState('');
   const register = useAuthStore((s) => s.register);
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!name.trim() || !email.trim() || !password || !confirmPassword) {
-      toast.error('Vui lòng điền đầy đủ thông tin'); return;
+      toast.error(t('register_empty_fields')); return;
     }
-    if (password !== confirmPassword) { toast.error('Mật khẩu không khớp'); return; }
-    if (password.length < 8) { toast.error('Mật khẩu tối thiểu 8 ký tự'); return; }
+    if (password !== confirmPassword) { toast.error(t('register_password_mismatch')); return; }
+    if (password.length < 8) { toast.error(t('register_password_short')); return; }
     setIsLoading(true);
     try {
       await register({ name: name.trim(), email: email.trim(), password });
-      toast.success('Đăng ký thành công!');
+      toast.success(t('register_success'));
       navigate('/dashboard');
     } catch (err) {
-      toast.error(err?.message || 'Đăng ký thất bại');
+      toast.error(err?.message || t('register_fail'));
     } finally {
       setIsLoading(false);
     }
@@ -50,9 +52,9 @@ export default function RegisterPage() {
 
   return (
     <div style={{ fontFamily: "'Plus Jakarta Sans', 'DM Sans', sans-serif" }}>
-      <h1 className="text-2xl font-bold mb-1" style={{ color: 'white' }}>Tạo tài khoản 🚀</h1>
+      <h1 className="text-2xl font-bold mb-1" style={{ color: 'white' }}>{t('register_title')}</h1>
       <p className="text-sm mb-5" style={{ color: 'rgba(255,255,255,0.45)' }}>
-        Miễn phí — không cần thẻ tín dụng
+        {t('register_subtitle')}
       </p>
 
       {/* OAuth */}
@@ -82,16 +84,16 @@ export default function RegisterPage() {
 
       <div className="mb-4" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)' }} />
-        <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.3)' }}>hoặc đăng ký bằng email</span>
+        <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.3)' }}>{t('register_or_email')}</span>
         <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)' }} />
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-3">
         {[
-          { label: 'Họ tên', value: name, onChange: setName, field: 'name', type: 'text', placeholder: 'Nguyễn Văn A' },
-          { label: 'Email', value: email, onChange: setEmail, field: 'email', type: 'email', placeholder: 'you@example.com' },
-          { label: 'Mật khẩu', value: password, onChange: setPassword, field: 'password', type: 'password', placeholder: 'Tối thiểu 8 ký tự' },
-          { label: 'Xác nhận mật khẩu', value: confirmPassword, onChange: setConfirmPassword, field: 'confirm', type: 'password', placeholder: '••••••••' },
+          { label: t('register_name_label'), value: name, onChange: setName, field: 'name', type: 'text', placeholder: t('register_name_placeholder') },
+          { label: t('login_email_label'), value: email, onChange: setEmail, field: 'email', type: 'email', placeholder: t('register_email_placeholder') },
+          { label: t('login_password_label'), value: password, onChange: setPassword, field: 'password', type: 'password', placeholder: t('register_password_placeholder') },
+          { label: t('register_confirm_label'), value: confirmPassword, onChange: setConfirmPassword, field: 'confirm', type: 'password', placeholder: t('register_confirm_placeholder') },
         ].map(({ label, value, onChange, field, type, placeholder }) => (
           <div key={field}>
             <label style={{ display: 'block', fontSize: '13px', fontWeight: '500', color: 'rgba(255,255,255,0.6)', marginBottom: '5px' }}>
@@ -114,14 +116,14 @@ export default function RegisterPage() {
           cursor: isLoading ? 'not-allowed' : 'pointer',
           boxShadow: '0 4px 15px rgba(102,126,234,0.4)',
         }}>
-          {isLoading ? 'Đang đăng ký...' : 'Tạo tài khoản'}
+          {isLoading ? t('register_button_loading') : t('register_button')}
         </button>
       </form>
 
       <p className="text-center mt-4" style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)' }}>
-        Đã có tài khoản?{' '}
+        {t('register_has_account')}{' '}
         <Link to="/login" style={{ color: '#a78bfa', fontWeight: '600', textDecoration: 'none' }}>
-          Đăng nhập
+          {t('register_login_link')}
         </Link>
       </p>
     </div>

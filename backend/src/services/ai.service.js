@@ -29,45 +29,78 @@ const parseChecklistFromText = (content) => {
   return lines.slice(0, 8);
 };
 
-const buildFallbackChecklist = ({ title = '', description = '' }) => {
+const buildFallbackChecklist = ({ title = '', description = '', language = 'vi' }) => {
   const text = `${title} ${description}`.toLowerCase();
+  const isEn = language === 'en';
 
-  const fallback = [
-    'Xác định phạm vi công việc và tiêu chí hoàn thành',
-    'Thiết kế/chuẩn bị tài nguyên cần thiết',
-    'Triển khai chức năng chính',
-    'Kiểm tra và xử lý lỗi',
-    'Cập nhật tài liệu và bàn giao',
-  ];
+  const fallback = isEn
+    ? [
+        'Define scope and acceptance criteria',
+        'Design/prepare required resources',
+        'Implement core functionality',
+        'Test and handle edge cases',
+        'Update documentation and hand off',
+      ]
+    : [
+        'Xác định phạm vi công việc và tiêu chí hoàn thành',
+        'Thiết kế/chuẩn bị tài nguyên cần thiết',
+        'Triển khai chức năng chính',
+        'Kiểm tra và xử lý lỗi',
+        'Cập nhật tài liệu và bàn giao',
+      ];
 
   if (text.includes('đăng ký') || text.includes('register')) {
-    return [
-      'Thiết kế giao diện form đăng ký',
-      'Thêm validate email và mật khẩu',
-      'Kết nối API đăng ký',
-      'Xử lý lỗi và thông báo thành công',
-      'Test luồng đăng ký end-to-end',
-    ];
+    return isEn
+      ? [
+          'Design registration form UI',
+          'Add email and password validation',
+          'Connect to registration API',
+          'Handle errors and success notifications',
+          'Test end-to-end registration flow',
+        ]
+      : [
+          'Thiết kế giao diện form đăng ký',
+          'Thêm validate email và mật khẩu',
+          'Kết nối API đăng ký',
+          'Xử lý lỗi và thông báo thành công',
+          'Test luồng đăng ký end-to-end',
+        ];
   }
 
   if (text.includes('login') || text.includes('đăng nhập')) {
-    return [
-      'Thiết kế giao diện form đăng nhập',
-      'Thêm validate email và mật khẩu',
-      'Kết nối API đăng nhập và nhận Token',
-      'Lưu Token an toàn (Cookie/Storage)',
-      'Xử lý lỗi sai tài khoản hoặc mật khẩu',
-    ];
+    return isEn
+      ? [
+          'Design login form UI',
+          'Add email and password validation',
+          'Connect to login API and receive Token',
+          'Store Token securely (Cookie/Storage)',
+          'Handle wrong credentials errors',
+        ]
+      : [
+          'Thiết kế giao diện form đăng nhập',
+          'Thêm validate email và mật khẩu',
+          'Kết nối API đăng nhập và nhận Token',
+          'Lưu Token an toàn (Cookie/Storage)',
+          'Xử lý lỗi sai tài khoản hoặc mật khẩu',
+        ];
   }
 
   if (text.includes('api')) {
-    return [
-      'Thiết kế request/response schema',
-      'Implement endpoint và business logic',
-      'Thêm validate dữ liệu đầu vào',
-      'Xử lý lỗi và phân quyền',
-      'Viết test cho endpoint',
-    ];
+    return isEn
+      ? [
+          'Design request/response schema',
+          'Implement endpoint and business logic',
+          'Add input validation',
+          'Handle errors and authorization',
+          'Write tests for the endpoint',
+        ]
+      : [
+          'Thiết kế request/response schema',
+          'Implement endpoint và business logic',
+          'Thêm validate dữ liệu đầu vào',
+          'Xử lý lỗi và phân quyền',
+          'Viết test cho endpoint',
+        ];
   }
 
   return fallback;
@@ -92,16 +125,17 @@ const fallbackSearchFilters = (query = '') => {
   return filters;
 };
 
-exports.generateChecklist = async ({ title, description }) => {
+exports.generateChecklist = async ({ title, description, language = 'vi' }) => {
   if (!hasOpenAI) {
     return {
       status: 'fallback',
-      checklist: buildFallbackChecklist({ title, description }),
+      checklist: buildFallbackChecklist({ title, description, language }),
       usage: null,
     };
   }
 
   const start = Date.now();
+  const lang = language === 'en' ? 'English' : 'Vietnamese';
 
   try {
     const completion = await client.chat.completions.create({
@@ -110,8 +144,7 @@ exports.generateChecklist = async ({ title, description }) => {
       messages: [
         {
           role: 'system',
-          content:
-            'You are an expert technical project manager. Based on standard real-world best practices (like searching Google for best practices), return only a JSON array of 4-8 concise, actionable checklist items in Vietnamese. Make them very reasonable and logical for the card title (e.g. if the title is "login", suggest UI layout, input validation, calling Auth API, token handling, error handling).',
+          content: `You are an expert technical project manager. Based on standard real-world best practices, return only a JSON array of 4-8 concise, actionable checklist items in ${lang}. Make them very reasonable and logical for the card title (e.g. if the title is "login", suggest UI layout, input validation, calling Auth API, token handling, error handling).`,
         },
         {
           role: 'user',
@@ -124,18 +157,18 @@ exports.generateChecklist = async ({ title, description }) => {
     const parsed = safeParseJson(content, parseChecklistFromText(content));
     const checklist = Array.isArray(parsed)
       ? parsed.map((item) => String(item).trim()).filter(Boolean).slice(0, 8)
-      : buildFallbackChecklist({ title, description });
+      : buildFallbackChecklist({ title, description, language });
 
     return {
       status: 'success',
-      checklist: checklist.length > 0 ? checklist : buildFallbackChecklist({ title, description }),
+      checklist: checklist.length > 0 ? checklist : buildFallbackChecklist({ title, description, language }),
       latencyMs: Date.now() - start,
       usage: completion.usage || null,
     };
   } catch (error) {
     return {
       status: 'fallback',
-      checklist: buildFallbackChecklist({ title, description }),
+      checklist: buildFallbackChecklist({ title, description, language }),
       latencyMs: Date.now() - start,
       usage: null,
       error: error.message,
@@ -195,23 +228,32 @@ exports.extractSearchFilters = async ({ query }) => {
   }
 };
 
-exports.generateAssistantReply = async ({ message, boardContext }) => {
+exports.generateAssistantReply = async ({ message, boardContext, language = 'vi' }) => {
   const normalizedMessage = String(message || '').trim().toLowerCase();
+  const isEn = language === 'en';
 
   const buildFallbackAssistantAnswer = () => {
     const isGreeting = /^(hi|hello|hey|chào|chao|xin chào|yo)\b/i.test(normalizedMessage);
 
     if (isGreeting) {
       return boardContext
-        ? `Chào bạn 👋 Mình đang có ngữ cảnh board ${boardContext.name}. Bạn có thể hỏi: “card nào quá hạn?”, “tóm tắt board”, hoặc “việc nào ưu tiên hôm nay?”.`
-        : 'Chào bạn 👋 Mình có thể hỗ trợ tìm card, gợi ý checklist, tóm tắt tiến độ và đề xuất ưu tiên công việc. Bạn muốn bắt đầu từ board nào?';
+        ? (isEn
+            ? `Hello! 👋 I have context from board “${boardContext.name}”. You can ask: “which cards are overdue?”, “summarize this board”, or “what should I prioritize today?”.`
+            : `Chào bạn 👋 Mình đang có ngữ cảnh board ${boardContext.name}. Bạn có thể hỏi: “card nào quá hạn?”, “tóm tắt board”, hoặc “việc nào ưu tiên hôm nay?”.`)
+        : (isEn
+            ? 'Hello! 👋 I can help you find cards, suggest checklists, summarize progress, and recommend task priorities. Which board would you like to start with?'
+            : 'Chào bạn 👋 Mình có thể hỗ trợ tìm card, gợi ý checklist, tóm tắt tiến độ và đề xuất ưu tiên công việc. Bạn muốn bắt đầu từ board nào?');
     }
 
     if (boardContext) {
-      return `Mình đang có ngữ cảnh board ${boardContext.name}. Bạn có thể hỏi cụ thể hơn, ví dụ: “tóm tắt việc đang làm”, “card nào cần xử lý gấp”, hoặc “gợi ý plan 3 bước cho task X”.`;
+      return isEn
+        ? `I have context from board “${boardContext.name}”. You can ask more specifically, e.g. “summarize ongoing tasks”, “which cards need urgent attention”, or “suggest a 3-step plan for task X”.`
+        : `Mình đang có ngữ cảnh board ${boardContext.name}. Bạn có thể hỏi cụ thể hơn, ví dụ: “tóm tắt việc đang làm”, “card nào cần xử lý gấp”, hoặc “gợi ý plan 3 bước cho task X”.`;
     }
 
-    return 'Mình chưa có ngữ cảnh board. Bạn mở một board để mình hỗ trợ chính xác hơn, hoặc gửi mục tiêu cụ thể (ví dụ: “lập kế hoạch cho task login API”).';
+    return isEn
+      ? 'I do not have a board context yet. Open a board for more accurate assistance, or send a specific goal (e.g. “plan the login API task”).'
+      : 'Mình chưa có ngữ cảnh board. Bạn mở một board để mình hỗ trợ chính xác hơn, hoặc gửi mục tiêu cụ thể (ví dụ: “lập kế hoạch cho task login API”).';
   };
 
   if (!normalizedMessage) {
@@ -237,6 +279,7 @@ exports.generateAssistantReply = async ({ message, boardContext }) => {
   }
 
   const start = Date.now();
+  const replyLang = isEn ? 'English' : 'Vietnamese';
 
   try {
     const completion = await client.chat.completions.create({
@@ -245,8 +288,7 @@ exports.generateAssistantReply = async ({ message, boardContext }) => {
       messages: [
         {
           role: 'system',
-          content:
-            'You are an AI assistant for a Trello-like task management app. Reply concisely in Vietnamese with practical next steps.',
+          content: `You are an AI assistant for a Trello-like task management app. Reply concisely in ${replyLang} with practical next steps.`,
         },
         {
           role: 'user',
@@ -256,10 +298,13 @@ exports.generateAssistantReply = async ({ message, boardContext }) => {
     });
 
     const content = completion.choices?.[0]?.message?.content || '';
+    const noAnswerMsg = isEn
+      ? 'I do not have enough information to answer. Please describe your question in more detail.'
+      : 'Mình chưa có đủ thông tin để trả lời, bạn mô tả cụ thể hơn nhé.';
 
     return {
       status: 'success',
-      answer: content.trim() || 'Mình chưa có đủ thông tin để trả lời, bạn mô tả cụ thể hơn nhé.',
+      answer: content.trim() || noAnswerMsg,
       latencyMs: Date.now() - start,
       usage: completion.usage || null,
     };

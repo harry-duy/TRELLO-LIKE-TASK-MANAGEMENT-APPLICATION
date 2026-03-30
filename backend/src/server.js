@@ -16,6 +16,7 @@ const { Server } = require('socket.io');
 
 const logger = require('./utils/logger');
 const { errorHandler } = require('./middleware/errorHandler');
+const { startDueDateReminder } = require('./utils/dueDateReminder');
 const connectDB = require('./config/database');
 const initializeSocket = require('./socket');
 
@@ -45,6 +46,7 @@ const io = new Server(server, {
 // Make io accessible to routes
 app.set('io', io);
 initializeSocket(io);
+startDueDateReminder(io);
 console.log('[DEBUG] Socket initialized; continuing server setup...');
 
 // Security Middleware
