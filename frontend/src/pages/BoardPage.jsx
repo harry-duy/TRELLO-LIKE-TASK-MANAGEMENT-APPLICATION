@@ -17,6 +17,10 @@ const L = {
     openWorkspace: 'Về workspace',
     editBoard: 'Chỉnh sửa board',
     deleteBoard: 'Xóa board',
+    deleteBoardTitle: 'Xác nhận xóa board',
+    deleteBoardHint: 'Board này sẽ bị xóa khỏi workspace hiện tại.',
+    deleteBoardImpact: 'Toàn bộ list và card bên trong board cũng sẽ bị xóa vĩnh viễn.',
+    deleteBoardAction: 'Xóa board',
     save: 'Lưu', cancel: 'Huỷ',
     boardName: 'Tên board', boardDescription: 'Mô tả', boardColor: 'Màu nền',
     updateSuccess: 'Đã cập nhật board', updateError: 'Không thể cập nhật board',
@@ -33,6 +37,10 @@ const L = {
     workspaceFallback: 'Workspace',
     openWorkspace: 'Back to workspace',
     editBoard: 'Edit board', deleteBoard: 'Delete board', save: 'Save', cancel: 'Cancel',
+    deleteBoardTitle: 'Confirm board deletion',
+    deleteBoardHint: 'This board will be removed from the current workspace.',
+    deleteBoardImpact: 'All lists and cards inside this board will be permanently deleted.',
+    deleteBoardAction: 'Delete board',
     boardName: 'Board name', boardDescription: 'Description', boardColor: 'Background',
     updateSuccess: 'Board updated', updateError: 'Could not update board',
     boardView: 'Board view', noDescription: 'No description yet.',
@@ -259,6 +267,8 @@ export default function BoardPage() {
   const authLoading    = useAuthStore(s => s.isLoading);
   const accessToken    = useAuthStore(s => s.accessToken);
   const [isEditingBoard, setIsEditingBoard] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeletingBoard, setIsDeletingBoard] = useState(false);
   const [showActivity,   setShowActivity]   = useState(false);
   const authReady = !authLoading && !!accessToken;
 
@@ -412,15 +422,7 @@ export default function BoardPage() {
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
-                  onClick={async () => {
-                    if (!window.confirm(l.deleteBoard)) return;
-                    try {
-                      await boardService.deleteBoard(board._id);
-                      navigate(workspaceId ? `/workspace/${workspaceId}` : '/dashboard');
-                    } catch (error) {
-                      toast.error(error?.message || l.updateError);
-                    }
-                  }}
+                  onClick={() => setShowDeleteConfirm(true)}
                 >
                   {l.deleteBoard}
                 </button>
@@ -458,6 +460,76 @@ export default function BoardPage() {
             });
           }}
         />
+      )}
+
+      {showDeleteConfirm && (
+        <div className="modal-overlay" onClick={() => !isDeletingBoard && setShowDeleteConfirm(false)}>
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: 440,
+              padding: 22,
+              background: 'linear-gradient(160deg,rgba(26,12,18,.98),rgba(20,14,29,.98))',
+              border: '1px solid rgba(248,113,113,.22)',
+            }}
+          >
+            <div className="flex items-start gap-3">
+              <div
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 14,
+                  background: 'rgba(239,68,68,.16)',
+                  color: '#f87171',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 18,
+                  fontWeight: 700,
+                  flexShrink: 0,
+                }}
+              >
+                !
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-lg font-semibold text-white">{l.deleteBoardTitle}</h3>
+                <p className="mt-1 text-sm text-white/65">{l.deleteBoardHint}</p>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.08em] text-red-300/80">
+                {l.boardFallback}
+              </div>
+              <div className="mt-2 break-words text-base font-semibold text-white">
+                {board?.name || l.boardFallback}
+              </div>
+              <div className="mt-3 text-sm text-white/55">
+                {l.deleteBoardImpact}
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={isDeletingBoard}
+              >
+                {l.cancel}
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger btn-sm"
+                onClick={handleDeleteBoard}
+                disabled={isDeletingBoard}
+              >
+                {isDeletingBoard ? l.loading : l.deleteBoardAction}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

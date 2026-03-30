@@ -2,6 +2,7 @@ const Card = require('../models/card.model');
 const Board = require('../models/board.model');
 const Workspace = require('../models/workspace.model');
 const Activity = require('../models/activity.model');
+const User = require('../models/user.model');
 const { asyncHandler, AppError } = require('../middleware/errorHandler');
 const notify = require('../utils/notifyHelper');
 const { cloudinary, upload } = require('../config/cloudinary');
@@ -18,6 +19,21 @@ const ensureBoardAccess = async (boardId, user) => {
   );
   if (!isOwner && !isMember) throw new AppError('You do not have access to this board', 403);
   return board;
+};
+
+const getBoardWorkspaceId = async (boardId) => {
+  const board = await Board.findById(boardId).select('workspace');
+  if (!board) return null;
+  return board.workspace || null;
+};
+
+const toIdStrings = (items = []) =>
+  items.map((item) => item?.toString?.() || String(item)).filter(Boolean);
+
+const normalizeDateValue = (value) => {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
 };
 
 // @desc    Search cards in a board (with pagination)
@@ -99,6 +115,7 @@ exports.createCard = asyncHandler(async (req, res, next) => {
     target: card._id,
     targetType: 'Card',
     board: boardId,
+    workspace: workspaceId,
   });
   res.status(201).json({ success: true, data: card });
 });
@@ -119,6 +136,7 @@ exports.moveCard = asyncHandler(async (req, res, next) => {
     target: card._id,
     targetType: 'Card',
     board: boardId,
+    workspace: workspaceId,
     metadata: { fromList: oldListId, toList: listId },
   });
   const io = req.app.get('io');
@@ -148,6 +166,9 @@ exports.updateCard = asyncHandler(async (req, res, next) => {
 
   const oldIsCompleted = card.isCompleted;
   const oldAssignees = card.assignees ? [...card.assignees] : [];
+  const oldLabels = [...(card.labels || [])];
+  const oldDueDate = card.dueDate;
+  const workspaceId = await getBoardWorkspaceId(card.board);
 
   const ALLOWED_FIELDS = [
     'title', 'description', 'dueDate', 'isCompleted',
@@ -158,18 +179,56 @@ exports.updateCard = asyncHandler(async (req, res, next) => {
   });
   await card.save();
 
+  const io = req.app?.get?.('io');
+  const activityTasks = [];
+
   if (!oldIsCompleted && card.isCompleted) {
-    await Activity.log({
+    activityTasks.push(Activity.log({
       actor: req.user._id, action: 'card_completed',
-      target: card._id,  targetType: 'Card', board: card.board,
-    });
+      target: card._id,  targetType: 'Card', board: card.board, workspace: workspaceId,
+    }));
   }
   if (req.body.assignees) {
     const oldIds = oldAssignees.map((a) => a.toString());
     const newIds = (req.body.assignees || []).map((a) => a.toString());
     const addedIds   = newIds.filter((id) => !oldIds.includes(id));
     const removedIds = oldIds.filter((id) => !newIds.includes(id));
-    const io = req.app?.get?.('io');
+    const changedAssigneeIds = [...addedIds, ...removedIds];
+    const changedUsers = changedAssigneeIds.length
+      ? await User.find({ _id: { $in: changedAssigneeIds } }).select('name')
+      : [];
+    const nameById = new Map(changedUsers.map((user) => [user._id.toString(), user.name]));
+
+    addedIds.forEach((assigneeId) => {
+      activityTasks.push(Activity.log({
+        actor: req.user._id,
+        action: 'member_assigned',
+        target: card._id,
+        targetType: 'Card',
+        board: card.board,
+        workspace: workspaceId,
+        metadata: {
+          assigneeId,
+          assigneeName: nameById.get(assigneeId) || assigneeId,
+        },
+      }));
+    });
+
+    removedIds.forEach((assigneeId) => {
+      activityTasks.push(Activity.log({
+        actor: req.user._id,
+        action: 'member_unassigned',
+        target: card._id,
+        targetType: 'Card',
+        board: card.board,
+        workspace: workspaceId,
+        metadata: {
+          assigneeId,
+          assigneeName: nameById.get(assigneeId) || assigneeId,
+        },
+      }));
+    });
+
     if (addedIds.length > 0) {
       await notify(io, {
         actor:      req.user._id,
@@ -193,9 +252,65 @@ exports.updateCard = asyncHandler(async (req, res, next) => {
       });
     }
   }
+  if (req.body.labels) {
+    const addedLabels = card.labels.filter((label) => !oldLabels.includes(label));
+    const removedLabels = oldLabels.filter((label) => !card.labels.includes(label));
+
+    addedLabels.forEach((label) => {
+      activityTasks.push(Activity.log({
+        actor: req.user._id,
+        action: 'label_added',
+        target: card._id,
+        targetType: 'Card',
+        board: card.board,
+        workspace: workspaceId,
+        metadata: { label },
+      }));
+    });
+
+    removedLabels.forEach((label) => {
+      activityTasks.push(Activity.log({
+        actor: req.user._id,
+        action: 'label_removed',
+        target: card._id,
+        targetType: 'Card',
+        board: card.board,
+        workspace: workspaceId,
+        metadata: { label },
+      }));
+    });
+  }
+
+  if (req.body.dueDate !== undefined && normalizeDateValue(oldDueDate) !== normalizeDateValue(card.dueDate)) {
+    activityTasks.push(Activity.log({
+      actor: req.user._id,
+      action: 'due_date_changed',
+      target: card._id,
+      targetType: 'Card',
+      board: card.board,
+      workspace: workspaceId,
+      metadata: {
+        previousDueDate: normalizeDateValue(oldDueDate),
+        nextDueDate: normalizeDateValue(card.dueDate),
+      },
+    }));
+  }
+
+  const changedFields = Object.keys(req.body).filter((key) => !['isCompleted', 'assignees', 'labels', 'dueDate'].includes(key));
+  if (changedFields.length > 0) {
+    activityTasks.push(Activity.log({
+      actor: req.user._id,
+      action: 'card_updated',
+      target: card._id,
+      targetType: 'Card',
+      board: card.board,
+      workspace: workspaceId,
+      metadata: { fields: changedFields },
+    }));
+  }
+
   const hasContentUpdate = req.body.title || req.body.description || req.body.dueDate !== undefined;
   if (hasContentUpdate && card.assignees?.length > 0) {
-    const io = req.app?.get?.('io');
     await notify(io, {
       actor:      req.user._id,
       recipients: card.assignees.map((a) => a._id || a),
@@ -206,6 +321,15 @@ exports.updateCard = asyncHandler(async (req, res, next) => {
       metadata:   { cardId: card._id, cardTitle: card.title, boardId: card.board },
     });
   }
+
+  await Promise.all(activityTasks);
+
+  io?.to(`board:${card.board}`).emit('card:updated', {
+    cardId: card._id,
+    updates: req.body,
+    updatedBy: req.user._id,
+  });
+
   res.status(200).json({ success: true, data: card });
 });
 
@@ -230,6 +354,17 @@ exports.addComment = asyncHandler(async (req, res, next) => {
   if (!card) return next(new AppError('Card not found', 404));
   await ensureBoardAccess(card.board, req.user);
   await card.addComment(req.user._id, content);
+  await Activity.log({
+    actor: req.user._id,
+    action: 'comment_added',
+    target: card._id,
+    targetType: 'Card',
+    board: card.board,
+    workspace: workspaceId,
+    metadata: {
+      commentPreview: content.slice(0, 120),
+    },
+  });
   const io = req.app.get('io');
   io.to(`board:${boardId}`).emit('comment:added', {
     cardId: id, comment: card.comments[card.comments.length - 1],
@@ -500,6 +635,7 @@ exports.addAttachment = [
       target:     card._id,
       targetType: 'Card',
       board:      card.board,
+      workspace:  await getBoardWorkspaceId(card.board),
       metadata:   { fileName: attachment.name, fileType: attachment.type },
     });
 

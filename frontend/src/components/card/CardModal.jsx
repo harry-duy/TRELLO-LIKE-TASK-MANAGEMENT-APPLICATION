@@ -7,7 +7,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import cardService  from '@services/cardService';
 import boardService from '@services/boardService';
-import aiService    from '@services/aiService';
 import { useUiStore } from '@store/uiStore';
 import { useAuthStore } from '@store/authStore';
 import toast from 'react-hot-toast';
@@ -77,10 +76,10 @@ export default function CardModal({ cardId, boardId, onClose }) {
   const [isEditing,       setIsEditing]       = useState(false);
   const [form,            setForm]            = useState({ title: '', description: '', dueDate: '' });
   const [checklistText,   setChecklistText]   = useState('');
-  const [aiChecklist,     setAiChecklist]     = useState([]);
   const [moveTargets,     setMoveTargets]     = useState({});
   const [wsMembers,       setWsMembers]       = useState([]);
   const [loadingMembers,  setLoadingMembers]  = useState(false);
+  const [showAssigneePicker, setShowAssigneePicker] = useState(false);
   const [uploadingFile,   setUploadingFile]   = useState(false);
   const [activeTab,       setActiveTab]       = useState('comments');
   const [showCoverPicker, setShowCoverPicker] = useState(false);
@@ -96,6 +95,7 @@ export default function CardModal({ cardId, boardId, onClose }) {
   const [mentionCursor, setMentionCursor] = useState(0);
   const commentRef = useRef(null);
   const fileInputRef = useRef(null);
+  const assigneePickerRef = useRef(null);
 
   const { data: card, isLoading } = useQuery({
     queryKey: ['card', cardId],

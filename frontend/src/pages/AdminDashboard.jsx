@@ -54,10 +54,6 @@ export default function AdminDashboard() {
       return res?.data ?? res;
     },
   });
-  const { data: aiUsageData, isLoading: isAIUsageLoading } = useQuery({
-    queryKey: ['admin-ai-usage'],
-    queryFn: () => adminService.getAIUsageStats(30),
-  });
   const {
     data: activityData,
     fetchNextPage,
@@ -84,8 +80,6 @@ export default function AdminDashboard() {
   const overview     = overviewData?.data || {};
   const trend        = trendData?.data?.completionTrend || [];
   const userPerf     = workspaceAnalyticsData?.userPerformance || [];
-  const aiSummary    = aiUsageData?.data?.summary || {};
-  const aiByFeature  = aiUsageData?.data?.byFeature || [];
   const activities   = activityData?.pages?.flatMap(page => page.data.activities) || [];
   const resources    = resourceData?.data || {};
 
@@ -310,27 +304,6 @@ export default function AdminDashboard() {
           )}
         </div>
 
-        {/* AI Usage */}
-        <div className="card bg-white/10 border border-white/10 p-4 mt-3">
-          <h3 className="text-sm font-semibold text-emerald-50 mb-3">AI Usage (30 ngày)</h3>
-          {isAIUsageLoading ? (
-            <div className="text-sm text-emerald-100/70">Đang tải...</div>
-          ) : (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {[
-                { label: 'Total calls',  val: aiSummary.totalCalls  || 0 },
-                { label: 'Success rate', val: `${aiSummary.successRate || 0}%` },
-                { label: 'Failed calls', val: aiSummary.failedCalls  || 0 },
-                { label: 'Total tokens', val: aiSummary.totalTokens  || 0 },
-              ].map(c => (
-                <div key={c.label} className="bg-white/5 rounded-lg p-3">
-                  <div className="text-xs text-emerald-100/70">{c.label}</div>
-                  <div className="text-xl font-bold text-white">{c.val}</div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
       </div>
 
       {/* ── System Activity ── */}

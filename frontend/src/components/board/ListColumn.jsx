@@ -214,7 +214,7 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
             <div>
               <textarea
                 autoFocus
-                className="w-full p-2 border rounded-lg shadow-sm mb-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                className="mb-2 w-full rounded-xl border border-white/12 bg-slate-950/85 px-3 py-2 text-sm text-white shadow-sm placeholder:text-white/35 focus:border-emerald-400/60 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
                 placeholder={t('cardTitlePlaceholder')}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
@@ -234,6 +234,7 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
                   borderRadius: '12px',
                   fontSize: 14,
                   boxShadow: '0 8px 20px rgba(0,0,0,.18)',
+                  color: 'white',
                 }}
               />
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
