@@ -17,6 +17,8 @@ router.delete('/:id',    cardController.deleteCard);
 
 // Comments
 router.post('/:id/comments', cardController.addComment);
+router.put('/:id/comments/:commentId', cardController.updateComment);
+router.delete('/:id/comments/:commentId', cardController.deleteComment);
 
 // Checklist
 router.post('/:id/checklist',         validate(cardSchemas.addChecklistItem), cardController.addChecklistItem);

@@ -40,6 +40,8 @@ export default function NotificationBell() {
   const [tab,           setTab]     = useState('all');
   const [shaking,       setShaking] = useState(false);
   const [pos,           setPos]     = useState({ top: 60, right: 16 });
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [clearBusy, setClearBusy] = useState(false);
 
   const btnRef   = useRef(null);
   const panelRef = useRef(null);
@@ -111,8 +113,8 @@ export default function NotificationBell() {
     setUnread(0);
   };
 
-  const clearAll = async () => {
-    if (!window.confirm(
+  const clearAllLegacy = async () => {
+    if (!windowConfirmLegacy(
       lang === 'vi'
         ? 'Xoá tất cả thông báo? Hành động này không thể hoàn tác.'
         : 'Clear all notifications? This action cannot be undone.'
@@ -120,6 +122,19 @@ export default function NotificationBell() {
     await notificationService.clearAll();
     setNotifs([]);
     setUnread(0);
+  };
+
+  const clearAll = async () => {
+    if (clearBusy) return;
+    setClearBusy(true);
+    try {
+      await notificationService.clearAll();
+      setNotifs([]);
+      setUnread(0);
+      setShowClearConfirm(false);
+    } finally {
+      setClearBusy(false);
+    }
   };
 
   const shown = tab === 'unread' ? notifications.filter(n => !n.isRead) : notifications;
@@ -257,7 +272,7 @@ export default function NotificationBell() {
                   </button>
                 )}
                 {notifications.length > 0 && (
-                  <button type="button" onClick={clearAll}
+                  <button type="button" onClick={() => setShowClearConfirm(true)}
                     style={{
                       background: 'none', border: 'none', cursor: 'pointer',
                       fontSize: 11, color: '#f87171', fontWeight: 600,
@@ -280,6 +295,81 @@ export default function NotificationBell() {
                 </button>
               </div>
             </div>
+
+            {showClearConfirm && (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  zIndex: 2,
+                  background: 'rgba(2,6,23,.72)',
+                  backdropFilter: 'blur(4px)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 18,
+                }}
+              >
+                <div
+                  style={{
+                    width: '100%',
+                    maxWidth: 290,
+                    borderRadius: 18,
+                    border: '1px solid rgba(255,255,255,.1)',
+                    background: 'linear-gradient(180deg, rgba(15,23,42,.98), rgba(17,24,39,.98))',
+                    boxShadow: '0 20px 44px rgba(0,0,0,.45)',
+                    padding: 16,
+                  }}
+                >
+                  <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'white' }}>
+                    {lang === 'vi' ? 'Xóa tất cả thông báo?' : 'Clear all notifications?'}
+                  </p>
+                  <p style={{ margin: '8px 0 0', fontSize: 12, lineHeight: 1.5, color: 'rgba(255,255,255,.58)' }}>
+                    {lang === 'vi'
+                      ? 'Hành động này không thể hoàn tác.'
+                      : 'This action cannot be undone.'}
+                  </p>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowClearConfirm(false)}
+                      disabled={clearBusy}
+                      style={{
+                        padding: '7px 12px',
+                        borderRadius: 10,
+                        border: '1px solid rgba(255,255,255,.1)',
+                        background: 'rgba(255,255,255,.06)',
+                        color: 'rgba(255,255,255,.8)',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: clearBusy ? 'default' : 'pointer',
+                      }}
+                    >
+                      {lang === 'vi' ? 'Hủy' : 'Cancel'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearAll}
+                      disabled={clearBusy}
+                      style={{
+                        padding: '7px 12px',
+                        borderRadius: 10,
+                        border: '1px solid rgba(239,68,68,.28)',
+                        background: 'rgba(239,68,68,.16)',
+                        color: '#f87171',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: clearBusy ? 'default' : 'pointer',
+                      }}
+                    >
+                      {clearBusy
+                        ? (lang === 'vi' ? 'Đang xóa...' : 'Clearing...')
+                        : (lang === 'vi' ? 'Xóa hết' : 'Clear all')}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Tabs */}
             <div style={{ padding: '8px 14px', borderBottom: '1px solid rgba(255,255,255,.06)' }}>

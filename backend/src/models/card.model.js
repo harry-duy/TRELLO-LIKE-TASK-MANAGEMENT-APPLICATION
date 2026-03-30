@@ -193,8 +193,8 @@ cardSchema.methods.updateComment = function (commentId, content) {
 cardSchema.methods.deleteComment = function (commentId) {
   const comment = this.comments.id(commentId);
   if (!comment) throw new Error('Comment not found');
-  
-  comment.remove();
+
+  this.comments.pull({ _id: commentId });
   return this.save();
 };
 

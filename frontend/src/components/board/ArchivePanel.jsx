@@ -48,6 +48,7 @@ export default function ArchivePanel({ boardId, lang = 'vi', onClose }) {
   const l = L[lang] || L.vi;
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const [cardToDelete, setCardToDelete] = useState(null);
 
   const { data: archivedCards = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['archivedCards', boardId],
@@ -76,8 +77,7 @@ export default function ArchivePanel({ boardId, lang = 'vi', onClose }) {
   });
 
   const handleDelete = (card) => {
-    if (!window.confirm(l.deleteConfirm)) return;
-    deleteMutation.mutate(card._id);
+    setCardToDelete(card);
   };
 
   const filtered = (archivedCards || []).filter((card) =>
@@ -90,6 +90,7 @@ export default function ArchivePanel({ boardId, lang = 'vi', onClose }) {
         className="modal-content"
         onClick={(event) => event.stopPropagation()}
         style={{
+          position: 'relative',
           maxWidth: 520,
           width: '92vw',
           padding: 0,
@@ -252,6 +253,62 @@ export default function ArchivePanel({ boardId, lang = 'vi', onClose }) {
             </div>
           )}
         </div>
+
+        {cardToDelete && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'rgba(2,6,23,.72)',
+              backdropFilter: 'blur(4px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 18,
+            }}
+            onClick={() => !deleteMutation.isPending && setCardToDelete(null)}
+          >
+            <div
+              style={{
+                width: '100%',
+                maxWidth: 360,
+                borderRadius: 16,
+                border: '1px solid rgba(255,255,255,.1)',
+                background: 'rgba(15,23,42,.96)',
+                padding: 18,
+                boxShadow: '0 20px 48px rgba(0,0,0,.45)',
+              }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'white' }}>{l.delete}</p>
+              <p style={{ margin: '8px 0 0', fontSize: 13, color: 'rgba(255,255,255,.62)', lineHeight: 1.5 }}>
+                {l.deleteConfirm}
+              </p>
+              <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={deleteMutation.isPending}
+                  onClick={() => setCardToDelete(null)}
+                >
+                  {lang === 'vi' ? 'Hủy' : 'Cancel'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger btn-sm"
+                  disabled={deleteMutation.isPending}
+                  onClick={() => {
+                    deleteMutation.mutate(cardToDelete._id, {
+                      onSuccess: () => setCardToDelete(null),
+                    });
+                  }}
+                >
+                  {deleteMutation.isPending ? '...' : l.delete}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

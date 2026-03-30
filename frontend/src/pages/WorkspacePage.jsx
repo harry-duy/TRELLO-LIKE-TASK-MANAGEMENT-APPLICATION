@@ -519,39 +519,6 @@ export default function WorkspacePage() {
               <p className="text-sm text-white/45">{l.quickHint}</p>
             </div>
 
-            {showSettings && canUpdateWorkspace && (
-              <div className="mt-4 border-t border-white/10 pt-4">
-                <p className="mb-3 text-sm text-white/45">{l.settingsHint}</p>
-                <div className="space-y-3">
-                  <input
-                    className="input"
-                    value={editName}
-                    onChange={(event) => setEditName(event.target.value)}
-                    disabled={!canUpdateWorkspace}
-                    placeholder={l.wsNamePh}
-                  />
-                  <textarea
-                    className="input min-h-[88px] resize-none"
-                    value={editDesc}
-                    onChange={(event) => setEditDesc(event.target.value)}
-                    disabled={!canUpdateWorkspace}
-                    placeholder={l.descPh}
-                  />
-                  <select
-                    className="input"
-                    value={editVisibility}
-                    onChange={(event) => setEditVisibility(event.target.value)}
-                    disabled={!canUpdateWorkspace}
-                  >
-                    <option value="private">{l.privateVisibility}</option>
-                    <option value="public">{l.publicVisibility}</option>
-                  </select>
-                  <button className="btn btn-secondary w-full justify-center" onClick={handleSaveWorkspace} disabled={isSavingWorkspace}>
-                    {isSavingWorkspace ? l.saving : l.saveWorkspace}
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </aside>
       </section>
@@ -645,6 +612,105 @@ export default function WorkspacePage() {
                   }}
                 >
                   {l.cancel}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSettings && canUpdateWorkspace && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setShowSettings(false);
+          }}
+        >
+          <div className="w-full max-w-lg rounded-[28px] border border-white/12 bg-[linear-gradient(160deg,rgba(15,23,42,.98),rgba(17,24,39,.98))] p-6 shadow-[0_32px_80px_rgba(0,0,0,.45)]">
+            <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-5">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-200/60">
+                  {l.settingsSection}
+                </div>
+                <h3 className="mt-2 text-xl font-semibold text-white">{l.editWorkspace}</h3>
+                <p className="mt-1 text-sm text-white/45">{l.settingsHint}</p>
+              </div>
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowSettings(false)}>
+                {l.cancel}
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/45">
+                  {l.wsNamePh}
+                </label>
+                <input
+                  className="input"
+                  value={editName}
+                  onChange={(event) => setEditName(event.target.value)}
+                  disabled={!canUpdateWorkspace}
+                  placeholder={l.wsNamePh}
+                  style={{
+                    background: 'rgba(2,6,23,.86)',
+                    border: '1px solid rgba(255,255,255,.12)',
+                    color: 'white',
+                  }}
+                  autoFocus
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/45">
+                  {l.descPh}
+                </label>
+                <textarea
+                  className="input min-h-[120px] resize-none"
+                  value={editDesc}
+                  onChange={(event) => setEditDesc(event.target.value)}
+                  disabled={!canUpdateWorkspace}
+                  placeholder={l.descPh}
+                  style={{
+                    background: 'rgba(2,6,23,.86)',
+                    border: '1px solid rgba(255,255,255,.12)',
+                    color: 'white',
+                  }}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/45">
+                  {l.visibilityLabel}
+                </label>
+                <select
+                  className="input"
+                  value={editVisibility}
+                  onChange={(event) => setEditVisibility(event.target.value)}
+                  disabled={!canUpdateWorkspace}
+                  style={{
+                    background: 'rgba(2,6,23,.86)',
+                    border: '1px solid rgba(255,255,255,.12)',
+                    color: 'white',
+                  }}
+                >
+                  <option value="private" style={{ background: '#0f172a', color: 'white' }}>{l.privateVisibility}</option>
+                  <option value="public" style={{ background: '#0f172a', color: 'white' }}>{l.publicVisibility}</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button className="btn btn-secondary btn-sm" onClick={() => setShowSettings(false)}>
+                  {l.cancel}
+                </button>
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={async () => {
+                    await handleSaveWorkspace();
+                    setShowSettings(false);
+                  }}
+                  disabled={isSavingWorkspace || !editName.trim()}
+                >
+                  {isSavingWorkspace ? l.saving : l.saveWorkspace}
                 </button>
               </div>
             </div>

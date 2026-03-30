@@ -18,6 +18,7 @@ export default function AdminDashboard() {
   const [boardClosedFilter,  setBoardClosedFilter]  = useState('');
   const [activityActionFilter,setActivityActionFilter] = useState('');
   const [analyticsDays,      setAnalyticsDays]      = useState(7);
+  const [confirmDialog,      setConfirmDialog]      = useState(null);
 
   const queryParams = useMemo(() => ({
     search: search.trim(), role: roleFilter, isActive: statusFilter, page: 1, limit: 100,
@@ -112,11 +113,6 @@ export default function AdminDashboard() {
     onSuccess: () => { toast.success('Đã cập nhật role workspace'); refreshWorkspaces(); },
     onError: err => toast.error(err?.message || 'Không thể cập nhật role workspace'),
   });
-  const transferOwnershipMutation = useMutation({
-    mutationFn: ({ workspaceId, userId }) => adminService.transferWorkspaceOwnership(workspaceId, userId),
-    onSuccess: () => { toast.success('Đã chuyển ownership workspace'); refreshWorkspaces(); },
-    onError: err => toast.error(err?.message || 'Không thể chuyển ownership'),
-  });
   const removeMemberMutation = useMutation({
     mutationFn: ({ workspaceId, userId }) => adminService.removeWorkspaceMember(workspaceId, userId),
     onSuccess: () => { toast.success('Đã xoá thành viên'); refreshWorkspaces(); },
@@ -139,7 +135,7 @@ export default function AdminDashboard() {
   });
 
   const handleDelete   = (userId, email) => {
-    if (!window.confirm(`Xoá tài khoản ${email}? Hành động này không thể hoàn tác.`)) return;
+    if (!windowConfirmLegacy(`Xoá tài khoản ${email}? Hành động này không thể hoàn tác.`)) return;
     deleteMutation.mutate(userId);
   };
   const handleAddMember = (workspaceId) => {
@@ -155,21 +151,57 @@ export default function AdminDashboard() {
     updateWorkspaceMemberRoleMutation.mutate({ workspaceId, userId, role: role.trim() });
   };
 
-  const handleTransferOwnership = (workspaceId, currentOwnerId) => {
-    const userId = window.prompt('Nhập User ID member mới làm owner:', currentOwnerId || '');
-    if (!userId) return;
-    transferOwnershipMutation.mutate({ workspaceId, userId: userId.trim() });
-  };
-
   const handleDeleteWorkspace = (workspaceId, name) => {
-    if (!window.confirm(`Xoá workspace ${name}? Toàn bộ board và dữ liệu bên trong cũng sẽ bị xoá, không thể hoàn tác.`)) return;
+    if (!windowConfirmLegacy(`Xoá workspace ${name}? Toàn bộ board và dữ liệu bên trong cũng sẽ bị xoá, không thể hoàn tác.`)) return;
     deleteWorkspaceMutation.mutate(workspaceId);
   };
 
   const handleDeleteBoard = (boardId, name) => {
-    if (!window.confirm(`Xoá board ${name}? Hành động này không thể hoàn tác.`)) return;
+    if (!windowConfirmLegacy(`Xoá board ${name}? Hành động này không thể hoàn tác.`)) return;
     deleteBoardMutation.mutate(boardId);
   };
+
+  const openDeleteUserConfirm = (userId, email) => {
+    setConfirmDialog({
+      type: 'user',
+      id: userId,
+      title: 'Xoá tài khoản?',
+      message: `Xoá tài khoản ${email}? Hành động này không thể hoàn tác.`,
+    });
+  };
+
+  const openDeleteWorkspaceConfirm = (workspaceId, name) => {
+    setConfirmDialog({
+      type: 'workspace',
+      id: workspaceId,
+      title: 'Xoá workspace?',
+      message: `Xoá workspace ${name}? Toàn bộ board và dữ liệu bên trong cũng sẽ bị xoá, không thể hoàn tác.`,
+    });
+  };
+
+  const openDeleteBoardConfirm = (boardId, name) => {
+    setConfirmDialog({
+      type: 'board',
+      id: boardId,
+      title: 'Xoá board?',
+      message: `Xoá board ${name}? Hành động này không thể hoàn tác.`,
+    });
+  };
+
+  const handleConfirmDelete = () => {
+    if (!confirmDialog) return;
+    if (confirmDialog.type === 'user') {
+      deleteMutation.mutate(confirmDialog.id, { onSettled: () => setConfirmDialog(null) });
+      return;
+    }
+    if (confirmDialog.type === 'workspace') {
+      deleteWorkspaceMutation.mutate(confirmDialog.id, { onSettled: () => setConfirmDialog(null) });
+      return;
+    }
+    deleteBoardMutation.mutate(confirmDialog.id, { onSettled: () => setConfirmDialog(null) });
+  };
+
+  const isConfirmBusy = deleteMutation.isPending || deleteWorkspaceMutation.isPending || deleteBoardMutation.isPending;
 
   // Colors for bar chart
   const BAR_COLORS = ['#34d399', '#60a5fa', '#f472b6', '#fbbf24', '#a78bfa', '#fb923c'];
@@ -445,7 +477,7 @@ export default function AdminDashboard() {
                         {user.isActive ? 'Khóa' : 'Mở'}
                       </button>
                       <button type="button" className="btn bg-red-500 hover:bg-red-600 text-white"
-                        onClick={() => handleDelete(user._id, user.email)}
+                        onClick={() => openDeleteUserConfirm(user._id, user.email)}
                         disabled={deleteMutation.isPending}>
                         Xóa
                       </button>
@@ -486,10 +518,7 @@ export default function AdminDashboard() {
                   <button type="button" className="btn btn-secondary" onClick={() => handleAddMember(ws._id)} disabled={addMemberMutation.isPending}>
                     Thêm member
                   </button>
-                  <button type="button" className="btn btn-secondary" onClick={() => handleTransferOwnership(ws._id, ws.owner?._id)} disabled={transferOwnershipMutation.isPending}>
-                    Chuyển owner
-                  </button>
-                  <button type="button" className="btn bg-red-500 hover:bg-red-600 text-white" onClick={() => handleDeleteWorkspace(ws._id, ws.name)} disabled={deleteWorkspaceMutation.isPending}>
+                  <button type="button" className="btn bg-red-500 hover:bg-red-600 text-white" onClick={() => openDeleteWorkspaceConfirm(ws._id, ws.name)} disabled={deleteWorkspaceMutation.isPending}>
                     Xóa workspace
                   </button>
                 </div>
@@ -547,7 +576,7 @@ export default function AdminDashboard() {
                   {board.isClosed ? 'Mở lại' : 'Đóng board'}
                 </button>
                 <button type="button" className="btn bg-red-500 hover:bg-red-600 text-white"
-                  onClick={() => handleDeleteBoard(board._id, board.name)}
+                  onClick={() => openDeleteBoardConfirm(board._id, board.name)}
                   disabled={deleteBoardMutation.isPending}>
                   Xóa board
                 </button>
@@ -559,6 +588,57 @@ export default function AdminDashboard() {
           )}
         </div>
       </div>
+      {confirmDialog && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 10000,
+            background: 'rgba(2,6,23,.72)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+          onClick={() => !isConfirmBusy && setConfirmDialog(null)}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: 420,
+              borderRadius: 18,
+              border: '1px solid rgba(255,255,255,.1)',
+              background: 'rgba(15,23,42,.97)',
+              padding: 20,
+              boxShadow: '0 24px 54px rgba(0,0,0,.45)',
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p className="text-lg font-semibold text-white">{confirmDialog.title}</p>
+            <p className="mt-2 text-sm text-emerald-100/65">{confirmDialog.message}</p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                disabled={isConfirmBusy}
+                onClick={() => setConfirmDialog(null)}
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger btn-sm"
+                disabled={isConfirmBusy}
+                onClick={handleConfirmDelete}
+              >
+                {isConfirmBusy ? '...' : 'Xoá'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

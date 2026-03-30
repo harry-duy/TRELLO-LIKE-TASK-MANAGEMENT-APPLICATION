@@ -8,6 +8,7 @@ import cardService  from '@services/cardService';
 import boardService from '@services/boardService';
 import aiService    from '@services/aiService';
 import { useUiStore } from '@store/uiStore';
+import { useAuthStore } from '@store/authStore';
 import toast from 'react-hot-toast';
 import { useTranslation } from '@hooks/useTranslation';
 import LabelManager, { LabelChip } from '@components/board/LabelManager';
@@ -16,16 +17,36 @@ import apiClient from '@config/api';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
 
+const createMentionKey = (value = '') =>
+  String(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
 export default function CardModal({ cardId, boardId, onClose }) {
   const queryClient = useQueryClient();
   const { t }  = useTranslation();
   const lang   = useUiStore(s => s.language) || 'vi';
+  const currentUserId = useAuthStore(s => s.user?._id?.toString());
+  const currentUserRole = useAuthStore(s => s.user?.role);
 
   const [isEditing,       setIsEditing]       = useState(false);
   const [form,            setForm]            = useState({ title: '', description: '', dueDate: '' });
   const [checklistText,   setChecklistText]   = useState('');
   const [aiChecklist,     setAiChecklist]     = useState([]);
   const [commentText,     setCommentText]     = useState('');
+  const [editingCommentId, setEditingCommentId] = useState(null);
+  const [editingCommentText, setEditingCommentText] = useState('');
+  const [commentToDelete, setCommentToDelete] = useState(null);
+  const [attachmentToDelete, setAttachmentToDelete] = useState(null);
+  const [checklistItemToDelete, setChecklistItemToDelete] = useState(null);
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
+  const [showDeleteCardConfirm, setShowDeleteCardConfirm] = useState(false);
+  const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
+  const [showMentionMenu, setShowMentionMenu] = useState(false);
+  const [showEditMentionMenu, setShowEditMentionMenu] = useState(false);
   const [moveTargets,     setMoveTargets]     = useState({});
   const [wsMembers,       setWsMembers]       = useState([]);
   const [loadingMembers,  setLoadingMembers]  = useState(false);
@@ -33,6 +54,8 @@ export default function CardModal({ cardId, boardId, onClose }) {
   const [uploadingFile,   setUploadingFile]   = useState(false);
   const fileInputRef = useRef(null);
   const assigneePickerRef = useRef(null);
+  const commentInputRef = useRef(null);
+  const editCommentInputRef = useRef(null);
 
   const { data: card, isLoading } = useQuery({
     queryKey: ['card', cardId],
@@ -52,6 +75,19 @@ export default function CardModal({ cardId, boardId, onClose }) {
         .map(c => ({ value: c._id, label: `${c.title} (${list.name})` }))
     ),
   [board, cardId]);
+
+  const mentionCandidates = useMemo(() => (
+    (wsMembers || []).map((member) => {
+      const id = member?._id || member;
+      const name = member?.name || String(id);
+      return {
+        id: String(id),
+        name,
+        email: member?.email || '',
+        mentionKey: createMentionKey(name || member?.email || id),
+      };
+    })
+  ), [wsMembers]);
 
   useEffect(() => {
     if (!card) return;
@@ -123,6 +159,7 @@ export default function CardModal({ cardId, boardId, onClose }) {
     onSuccess:  () => {
       queryClient.invalidateQueries(['card', cardId]);
       setCommentText('');
+      setShowMentionMenu(false);
     },
   });
 
@@ -189,20 +226,140 @@ export default function CardModal({ cardId, boardId, onClose }) {
     onSuccess:  () => { queryClient.invalidateQueries(['board', boardId]); toast.success(lang === 'vi' ? 'Đã lưu trữ card' : 'Card archived'); onClose(); },
   });
 
-  const handleArchive = () => {
-    if (!window.confirm(
-      lang === 'vi'
-        ? 'Luu tru card nay? Ban co the khoi phuc lai tu muc luu tru.'
-        : 'Archive this card? You can restore it later from the archive.'
-    )) return;
+  const updateCommentMutation = useMutation({
+    mutationFn: ({ commentId, content }) => cardService.updateComment(cardId, commentId, { content, boardId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['card', cardId]);
+      setEditingCommentId(null);
+      setEditingCommentText('');
+      setShowEditMentionMenu(false);
+    },
+    onError: (error) => {
+      toast.error(error?.message || (lang === 'vi' ? 'Khong the cap nhat binh luan' : 'Could not update comment'));
+    },
+  });
 
-    archiveMutation.mutate();
+  const deleteCommentMutation = useMutation({
+    mutationFn: (commentId) => cardService.deleteComment(cardId, commentId),
+    onSuccess: () => queryClient.invalidateQueries(['card', cardId]),
+    onError: (error) => {
+      toast.error(error?.message || (lang === 'vi' ? 'Khong the xoa binh luan' : 'Could not delete comment'));
+    },
+  });
+
+  const handleArchive = () => {
+    setShowArchiveConfirm(true);
   };
 
   const handleSubmitComment = () => {
     const trimmed = commentText.trim();
     if (!trimmed || commentMutation.isPending) return;
     commentMutation.mutate(trimmed);
+  };
+
+  const handleStartEditComment = (comment) => {
+    setEditingCommentId(comment._id);
+    setEditingCommentText(comment.content || '');
+  };
+
+  const handleSubmitEditedComment = () => {
+    const trimmed = editingCommentText.trim();
+    if (!editingCommentId || !trimmed || updateCommentMutation.isPending) return;
+    updateCommentMutation.mutate({ commentId: editingCommentId, content: trimmed });
+  };
+
+  const handleCompletedChange = (nextCompleted) => {
+    if (!nextCompleted) {
+      updateMutation.mutate({ isCompleted: false });
+      return;
+    }
+
+    const hasIncompleteChecklist = (card?.checklist || []).some((item) => !item.completed);
+    if (hasIncompleteChecklist) {
+      setShowCompleteConfirm(true);
+      return;
+    }
+
+    updateMutation.mutate({ isCompleted: true });
+  };
+
+  const getMentionQuery = (value = '', caret = value.length) => {
+    const text = value.slice(0, caret);
+    const match = text.match(/(^|\s)@([a-z0-9-]*)$/i);
+    return match ? match[2].toLowerCase() : null;
+  };
+
+  const getMentionMatches = (value = '', caret, excludeUserId = null) => {
+    const query = getMentionQuery(value, caret);
+    if (query === null) return [];
+
+    return mentionCandidates
+      .filter((candidate) => candidate.id !== excludeUserId)
+      .filter((candidate) => (
+        !query
+        || candidate.mentionKey.includes(query)
+        || candidate.name.toLowerCase().includes(query)
+        || candidate.email.toLowerCase().includes(query)
+      ))
+      .slice(0, 6);
+  };
+
+  const insertMentionAtCursor = (currentValue, nextValueSetter, inputRef, candidate, menuSetter) => {
+    const input = inputRef.current;
+    const cursor = input?.selectionStart ?? currentValue.length;
+    const textBeforeCursor = currentValue.slice(0, cursor);
+    const match = textBeforeCursor.match(/(^|\s)@([a-z0-9-]*)$/i);
+    if (!match) return;
+
+    const mentionText = `@${candidate.mentionKey} `;
+    const start = cursor - match[0].length + match[1].length;
+    const nextValue = `${currentValue.slice(0, start)}${mentionText}${currentValue.slice(cursor)}`;
+    nextValueSetter(nextValue);
+    menuSetter(false);
+
+    requestAnimationFrame(() => {
+      if (!inputRef.current) return;
+      const nextCursor = start + mentionText.length;
+      inputRef.current.focus();
+      inputRef.current.setSelectionRange(nextCursor, nextCursor);
+    });
+  };
+
+  const formatCommentTime = (comment) => {
+    const base = comment?.updatedAt || comment?.createdAt;
+    if (!base) return '';
+    const date = new Date(base);
+    if (Number.isNaN(date.getTime())) return '';
+    const locale = lang === 'vi' ? 'vi-VN' : 'en-US';
+    const label = date.toLocaleString(locale, {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    const edited = comment?.updatedAt && comment?.createdAt
+      && new Date(comment.updatedAt).getTime() !== new Date(comment.createdAt).getTime();
+    return edited
+      ? `${label} ${lang === 'vi' ? '(da sua)' : '(edited)'}`
+      : label;
+  };
+
+  const renderCommentContent = (content = '') => {
+    const parts = content.split(/(@[a-z0-9-]+)/gi);
+    return parts.map((part, index) => {
+      if (/^@[a-z0-9-]+$/i.test(part)) {
+        return (
+          <span
+            key={`${part}-${index}`}
+            className="rounded-full bg-emerald-400/15 px-2 py-0.5 text-emerald-200"
+          >
+            {part}
+          </span>
+        );
+      }
+      return <span key={`${part}-${index}`}>{part}</span>;
+    });
   };
 
   const handleLabelsUpdate = async (newLabels) => {
@@ -233,7 +390,9 @@ export default function CardModal({ cardId, boardId, onClose }) {
   };
 
   const handleDeleteAttachment = async (attachmentId) => {
-    if (!window.confirm(
+    setAttachmentToDelete(attachmentId);
+    return;
+    if (!windowConfirmLegacy(
       lang === 'vi'
         ? 'Xoá file đính kèm này? Hành động này không thể hoàn tác.'
         : 'Delete this attachment? This action cannot be undone.'
@@ -244,6 +403,18 @@ export default function CardModal({ cardId, boardId, onClose }) {
       toast.success(lang === 'vi' ? 'Đã xoá file' : 'Attachment deleted');
     } catch (err) {
       toast.error(err?.message || (lang === 'vi' ? 'Xoá thất bại' : 'Delete failed'));
+    }
+  };
+
+  const confirmDeleteAttachment = async () => {
+    if (!attachmentToDelete) return;
+    try {
+      await apiClient.delete(`/cards/${cardId}/attachments/${attachmentToDelete}`);
+      queryClient.invalidateQueries(['card', cardId]);
+      toast.success(lang === 'vi' ? 'ÄÃ£ xoÃ¡ file' : 'Attachment deleted');
+      setAttachmentToDelete(null);
+    } catch (err) {
+      toast.error(err?.message || (lang === 'vi' ? 'XoÃ¡ tháº¥t báº¡i' : 'Delete failed'));
     }
   };
 
@@ -259,14 +430,19 @@ export default function CardModal({ cardId, boardId, onClose }) {
   const checklist = card?.checklist || [];
   const done      = checklist.filter(i => i.completed).length;
   const total     = checklist.length;
+  const incompleteChecklistCount = total - done;
   const progress  = total > 0 ? Math.round((done / total) * 100) : 0;
   const attachments = card?.attachments || [];
   const assignedIds = new Set((card?.assignees || []).map((a) => (a?._id || a)?.toString()).filter(Boolean));
   const assignedMembers = wsMembers.filter((member) => assignedIds.has((member?._id || member)?.toString()));
+  const mentionMatches = getMentionMatches(commentText, commentInputRef.current?.selectionStart ?? commentText.length, currentUserId);
+  const editMentionMatches = getMentionMatches(editingCommentText, editCommentInputRef.current?.selectionStart ?? editingCommentText.length, currentUserId);
+  const workspaceOwnerId = (board?.workspace?.owner?._id || board?.workspace?.owner)?.toString();
+  const isWorkspaceOwner = workspaceOwnerId && workspaceOwnerId === currentUserId;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content card-modal w-full max-w-3xl p-4 sm:p-6"
+      <div className="modal-content card-modal relative w-full max-w-3xl p-4 sm:p-6"
         onClick={e => e.stopPropagation()}>
 
         {/* ─── Header ─── */}
@@ -443,7 +619,7 @@ export default function CardModal({ cardId, boardId, onClose }) {
             <input
               type="checkbox"
               checked={card?.isCompleted || false}
-              onChange={(e) => updateMutation.mutate({ isCompleted: e.target.checked })}
+              onChange={(e) => handleCompletedChange(e.target.checked)}
               className="accent-emerald-500 w-4 h-4 cursor-pointer"
             />
             <span style={{ fontSize: 13, fontWeight: 600 }}>{lang === 'vi' ? 'Đã hoàn thành' : 'Completed'}</span>
@@ -492,8 +668,8 @@ export default function CardModal({ cardId, boardId, onClose }) {
               <button onClick={handleArchive} className="btn btn-secondary btn-sm w-full text-left" style={{ color: '#fbbf24' }}>
                 📦 {lang === 'vi' ? 'Lưu trữ' : 'Archive'}
               </button>
-              <button onClick={() => {
-                if (window.confirm(
+              <button onClick={() => { setShowDeleteCardConfirm(true); return;
+                if (windowConfirmLegacy(
                   lang === 'vi'
                     ? 'Xoá vĩnh viễn card này? Card phải được lưu trữ trước và hành động này không thể hoàn tác.'
                     : 'Permanently delete this card? The card must be archived first, and this action cannot be undone.'
@@ -658,8 +834,8 @@ export default function CardModal({ cardId, boardId, onClose }) {
                     </label>
                     <button
                       type="button"
-                      onClick={() => {
-                        if (!window.confirm(
+                      onClick={() => { setChecklistItemToDelete(item); return;
+                        if (!windowConfirmLegacy(
                           lang === 'vi'
                             ? 'Xoá checklist item này? Hành động này không thể hoàn tác.'
                             : 'Delete this checklist item? This action cannot be undone.'
@@ -728,33 +904,448 @@ export default function CardModal({ cardId, boardId, onClose }) {
         <section className="mt-6">
           <h3 className="text-sm uppercase tracking-[0.24em] text-emerald-100/70 mb-4">{t('activityComments')}</h3>
           <div className="space-y-3 mb-4">
-            {card?.comments?.map(comment => (
-              <div key={comment._id} className="flex gap-3">
-                <div className="w-8 h-8 rounded-full bg-blue-500 shrink-0 flex items-center justify-center text-white text-xs font-bold">
-                  {(comment.user?.name || '?')[0].toUpperCase()}
+            {card?.comments?.map(comment => {
+              const isOwnComment = (comment.user?._id || comment.user)?.toString() === currentUserId;
+              const canModerateComment = isOwnComment || currentUserRole === 'admin' || isWorkspaceOwner;
+              const isEditingComment = editingCommentId === comment._id;
+              const isDeletingComment = deleteCommentMutation.isPending && deleteCommentMutation.variables === comment._id;
+              return (
+                <div key={comment._id} className="flex gap-3">
+                  <div className="w-8 h-8 rounded-full bg-blue-500 shrink-0 flex items-center justify-center text-white text-xs font-bold">
+                    {(comment.user?.name || '?')[0].toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1 rounded-xl bg-white/10 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-white">{comment.user?.name}</p>
+                        <p className="mt-1 text-[11px] text-emerald-100/45">{formatCommentTime(comment)}</p>
+                      </div>
+                      {canModerateComment && (
+                        <div className="flex gap-2">
+                          {isOwnComment && (
+                            <button
+                              type="button"
+                              className="text-xs text-emerald-100/60 hover:text-white"
+                              onClick={() => {
+                                if (isEditingComment) {
+                                  setEditingCommentId(null);
+                                  setEditingCommentText('');
+                                  return;
+                                }
+                                handleStartEditComment(comment);
+                              }}
+                            >
+                              {isEditingComment
+                                ? (lang === 'vi' ? 'Huy' : 'Cancel')
+                                : (lang === 'vi' ? 'Sua' : 'Edit')}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="text-xs text-red-300/80 hover:text-red-200"
+                            disabled={isDeletingComment}
+                            onClick={() => setCommentToDelete(comment)}
+                          >
+                            {isDeletingComment
+                              ? '...'
+                              : (lang === 'vi' ? 'Xoa' : 'Delete')}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    {isEditingComment ? (
+                      <div className="relative mt-3 space-y-2">
+                        {showEditMentionMenu && editMentionMatches.length > 0 && (
+                          <div className="absolute left-3 right-3 top-3 z-10 rounded-2xl border border-white/10 bg-slate-950/98 p-2 shadow-2xl">
+                            <p className="px-3 pb-1 text-[11px] uppercase tracking-[0.16em] text-emerald-100/45">
+                              {lang === 'vi' ? 'Chon thanh vien' : 'Pick a member'}
+                            </p>
+                            {editMentionMatches.map((candidate) => (
+                              <button
+                                key={`edit-mention-${candidate.id}`}
+                                type="button"
+                                className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left hover:bg-white/5"
+                                onClick={() => insertMentionAtCursor(
+                                  editingCommentText,
+                                  setEditingCommentText,
+                                  editCommentInputRef,
+                                  candidate,
+                                  setShowEditMentionMenu
+                                )}
+                              >
+                                <span className="text-sm text-white">{candidate.name}</span>
+                                <span className="text-xs text-emerald-200/60">@{candidate.mentionKey}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        <textarea
+                          ref={editCommentInputRef}
+                          className="input w-full"
+                          rows={3}
+                          value={editingCommentText}
+                          onChange={(e) => {
+                            setEditingCommentText(e.target.value);
+                            setShowEditMentionMenu(getMentionQuery(e.target.value, e.target.selectionStart ?? e.target.value.length) !== null);
+                          }}
+                          onClick={(e) => {
+                            setShowEditMentionMenu(getMentionQuery(editingCommentText, e.currentTarget.selectionStart ?? editingCommentText.length) !== null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              handleSubmitEditedComment();
+                            }
+                            if (e.key === 'Escape') {
+                              setShowEditMentionMenu(false);
+                            }
+                          }}
+                        />
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => {
+                              setEditingCommentId(null);
+                              setEditingCommentText('');
+                            }}
+                          >
+                            {lang === 'vi' ? 'Huy' : 'Cancel'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-sm"
+                            disabled={!editingCommentText.trim() || updateCommentMutation.isPending}
+                            onClick={handleSubmitEditedComment}
+                          >
+                            {updateCommentMutation.isPending
+                              ? '...'
+                              : (lang === 'vi' ? 'Luu' : 'Save')}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="break-words text-sm text-emerald-50/80 mt-2 whitespace-pre-wrap">
+                        {renderCommentContent(comment.content)}
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <div className="min-w-0 flex-1 rounded-xl bg-white/10 p-3">
-                  <p className="text-sm font-semibold text-white">{comment.user?.name}</p>
-                  <p className="break-words text-sm text-emerald-50/80 mt-1">{comment.content}</p>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
-          <textarea
-            className="input w-full"
-            placeholder={t('writeComment')}
-            rows={2}
-            value={commentText}
-            onChange={e => setCommentText(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSubmitComment();
-              }
-            }}
-          />
+          <div className="relative space-y-2">
+            {showMentionMenu && mentionMatches.length > 0 && (
+              <div className="absolute left-3 right-3 top-3 z-10 rounded-2xl border border-white/10 bg-slate-950/98 p-2 shadow-2xl">
+                <p className="px-3 pb-1 text-[11px] uppercase tracking-[0.16em] text-emerald-100/45">
+                  {lang === 'vi' ? 'Chon thanh vien' : 'Pick a member'}
+                </p>
+                {mentionMatches.map((candidate) => (
+                  <button
+                    key={`mention-${candidate.id}`}
+                    type="button"
+                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left hover:bg-white/5"
+                    onClick={() => insertMentionAtCursor(
+                      commentText,
+                      setCommentText,
+                      commentInputRef,
+                      candidate,
+                      setShowMentionMenu
+                    )}
+                  >
+                    <span className="text-sm text-white">{candidate.name}</span>
+                    <span className="text-xs text-emerald-200/60">@{candidate.mentionKey}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <textarea
+              ref={commentInputRef}
+              className="input w-full"
+              placeholder={t('writeComment')}
+              rows={2}
+              value={commentText}
+              onChange={e => {
+                setCommentText(e.target.value);
+                setShowMentionMenu(getMentionQuery(e.target.value, e.target.selectionStart ?? e.target.value.length) !== null);
+              }}
+              onClick={(e) => {
+                setShowMentionMenu(getMentionQuery(commentText, e.currentTarget.selectionStart ?? commentText.length) !== null);
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmitComment();
+                }
+                if (e.key === 'Escape') {
+                  setShowMentionMenu(false);
+                }
+              }}
+            />
+            <p className="text-xs text-emerald-100/40">
+              {lang === 'vi'
+                ? 'Go @ de nhac ten thanh vien va gui thong bao cho ho.'
+                : 'Type @ to mention a member and send them a notification.'}
+            </p>
+          </div>
         </section>
+
+        {commentToDelete && (
+          <div
+            className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm"
+            onClick={() => setCommentToDelete(null)}
+          >
+            <div
+              className="w-full max-w-sm rounded-2xl border border-white/10 bg-slate-950/95 p-4 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p className="text-base font-semibold text-white">
+                {lang === 'vi' ? 'Xoa binh luan nay?' : 'Delete this comment?'}
+              </p>
+              <p className="mt-2 text-sm text-emerald-50/60">
+                {lang === 'vi'
+                  ? 'Hanh dong nay khong the hoan tac.'
+                  : 'This action cannot be undone.'}
+              </p>
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={deleteCommentMutation.isPending}
+                  onClick={() => setCommentToDelete(null)}
+                >
+                  {lang === 'vi' ? 'Huy' : 'Cancel'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger btn-sm"
+                  disabled={deleteCommentMutation.isPending}
+                  onClick={() => {
+                    deleteCommentMutation.mutate(commentToDelete._id, {
+                      onSuccess: () => {
+                        setCommentToDelete(null);
+                      },
+                    });
+                  }}
+                >
+                  {deleteCommentMutation.isPending
+                    ? '...'
+                    : (lang === 'vi' ? 'Xoa' : 'Delete')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showArchiveConfirm && (
+          <div
+            className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm"
+            onClick={() => !archiveMutation.isPending && setShowArchiveConfirm(false)}
+          >
+            <div
+              className="w-full max-w-sm rounded-2xl border border-white/10 bg-slate-950/95 p-4 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p className="text-base font-semibold text-white">
+                {lang === 'vi' ? 'Luu tru card nay?' : 'Archive this card?'}
+              </p>
+              <p className="mt-2 text-sm text-emerald-50/60">
+                {lang === 'vi'
+                  ? 'Ban co the khoi phuc lai card nay tu muc luu tru.'
+                  : 'You can restore this card later from the archive.'}
+              </p>
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={archiveMutation.isPending}
+                  onClick={() => setShowArchiveConfirm(false)}
+                >
+                  {lang === 'vi' ? 'Huy' : 'Cancel'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  disabled={archiveMutation.isPending}
+                  onClick={() => {
+                    archiveMutation.mutate(undefined, {
+                      onSuccess: () => setShowArchiveConfirm(false),
+                    });
+                  }}
+                >
+                  {archiveMutation.isPending ? '...' : (lang === 'vi' ? 'Luu tru' : 'Archive')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showDeleteCardConfirm && (
+          <div
+            className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm"
+            onClick={() => !deleteMutation.isPending && setShowDeleteCardConfirm(false)}
+          >
+            <div
+              className="w-full max-w-sm rounded-2xl border border-white/10 bg-slate-950/95 p-4 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p className="text-base font-semibold text-white">
+                {lang === 'vi' ? 'Xoa vinh vien card nay?' : 'Delete this card permanently?'}
+              </p>
+              <p className="mt-2 text-sm text-emerald-50/60">
+                {lang === 'vi'
+                  ? 'Card phai duoc luu tru truoc, va hanh dong nay khong the hoan tac.'
+                  : 'The card must be archived first, and this action cannot be undone.'}
+              </p>
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={deleteMutation.isPending}
+                  onClick={() => setShowDeleteCardConfirm(false)}
+                >
+                  {lang === 'vi' ? 'Huy' : 'Cancel'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger btn-sm"
+                  disabled={deleteMutation.isPending}
+                  onClick={() => {
+                    deleteMutation.mutate(undefined, {
+                      onSettled: () => setShowDeleteCardConfirm(false),
+                    });
+                  }}
+                >
+                  {deleteMutation.isPending ? '...' : (lang === 'vi' ? 'Xoa' : 'Delete')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showCompleteConfirm && (
+          <div
+            className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm"
+            onClick={() => !updateMutation.isPending && setShowCompleteConfirm(false)}
+          >
+            <div
+              className="w-full max-w-sm rounded-2xl border border-white/10 bg-slate-950/95 p-4 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p className="text-base font-semibold text-white">
+                {lang === 'vi' ? 'Checklist chưa hoàn thành' : 'Checklist is not finished'}
+              </p>
+              <p className="mt-2 text-sm text-emerald-50/60">
+                {lang === 'vi'
+                  ? `Card này vẫn còn ${incompleteChecklistCount} mục checklist chưa xong. Bạn vẫn muốn đánh dấu hoàn thành chứ?`
+                  : `This card still has ${incompleteChecklistCount} unfinished checklist item(s). Do you still want to mark it as completed?`}
+              </p>
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={updateMutation.isPending}
+                  onClick={() => setShowCompleteConfirm(false)}
+                >
+                  {lang === 'vi' ? 'Hủy' : 'Cancel'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  disabled={updateMutation.isPending}
+                  onClick={() => {
+                    updateMutation.mutate(
+                      { isCompleted: true },
+                      { onSuccess: () => setShowCompleteConfirm(false) }
+                    );
+                  }}
+                >
+                  {updateMutation.isPending
+                    ? '...'
+                    : (lang === 'vi' ? 'Vẫn hoàn thành' : 'Mark completed')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {attachmentToDelete && (
+          <div
+            className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm"
+            onClick={() => setAttachmentToDelete(null)}
+          >
+            <div
+              className="w-full max-w-sm rounded-2xl border border-white/10 bg-slate-950/95 p-4 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p className="text-base font-semibold text-white">
+                {lang === 'vi' ? 'Xoa file dinh kem nay?' : 'Delete this attachment?'}
+              </p>
+              <p className="mt-2 text-sm text-emerald-50/60">
+                {lang === 'vi' ? 'Hanh dong nay khong the hoan tac.' : 'This action cannot be undone.'}
+              </p>
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setAttachmentToDelete(null)}
+                >
+                  {lang === 'vi' ? 'Huy' : 'Cancel'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger btn-sm"
+                  onClick={confirmDeleteAttachment}
+                >
+                  {lang === 'vi' ? 'Xoa' : 'Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {checklistItemToDelete && (
+          <div
+            className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm"
+            onClick={() => !deleteChecklistMutation.isPending && setChecklistItemToDelete(null)}
+          >
+            <div
+              className="w-full max-w-sm rounded-2xl border border-white/10 bg-slate-950/95 p-4 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p className="text-base font-semibold text-white">
+                {lang === 'vi' ? 'Xoa checklist item nay?' : 'Delete this checklist item?'}
+              </p>
+              <p className="mt-2 text-sm text-emerald-50/60">
+                {lang === 'vi' ? 'Hanh dong nay khong the hoan tac.' : 'This action cannot be undone.'}
+              </p>
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={deleteChecklistMutation.isPending}
+                  onClick={() => setChecklistItemToDelete(null)}
+                >
+                  {lang === 'vi' ? 'Huy' : 'Cancel'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger btn-sm"
+                  disabled={deleteChecklistMutation.isPending}
+                  onClick={() => {
+                    deleteChecklistMutation.mutate(checklistItemToDelete._id, {
+                      onSuccess: () => setChecklistItemToDelete(null),
+                    });
+                  }}
+                >
+                  {deleteChecklistMutation.isPending ? '...' : (lang === 'vi' ? 'Xoa' : 'Delete')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
+

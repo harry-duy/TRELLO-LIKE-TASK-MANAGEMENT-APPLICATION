@@ -18,6 +18,8 @@ export default function ListColumn({ list, allLists = [], onCardAdded, onCardCli
   const [targetListId, setTargetListId] = useState('');
   const [newListName, setNewListName] = useState('');
   const [isCreatingTargetList, setIsCreatingTargetList] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const {
     attributes,
@@ -42,6 +44,8 @@ export default function ListColumn({ list, allLists = [], onCardAdded, onCardCli
     setTargetListId('');
     setNewListName('');
     setIsCreatingTargetList(false);
+    setShowDeleteConfirm(false);
+    setDeleteError('');
   };
 
   const handleAddCard = async () => {
@@ -73,28 +77,29 @@ export default function ListColumn({ list, allLists = [], onCardAdded, onCardCli
 
   const handleDeleteList = async () => {
     try {
-      if (cards.length === 0) {
-        const ok = window.confirm(t('deleteListConfirm'));
-        if (!ok) return;
-        await listService.deleteList(list._id);
-      } else if (deleteMode === 'move') {
+      if (cards.length > 0 && deleteMode === 'move') {
         if (!targetListId) {
-          window.alert(lang === 'vi' ? 'Hay chon danh sach dich de di chuyen card.' : 'Please choose a destination list first.');
+          setDeleteError(lang === 'vi' ? 'Hay chon danh sach dich de di chuyen card.' : 'Please choose a destination list first.');
           return;
         }
+      }
+      setDeleteError('');
+      setShowDeleteConfirm(true);
+    } catch (err) {
+      console.error(t('deleteListError'), err);
+    }
+  };
 
+  const confirmDeleteList = async () => {
+    try {
+      if (cards.length === 0) {
+        await listService.deleteList(list._id);
+      } else if (deleteMode === 'move') {
         await listService.deleteList(list._id, {
           strategy: 'move',
           targetListId,
         });
       } else {
-        const ok = window.confirm(
-          lang === 'vi'
-            ? 'Luu tru tat ca card trong danh sach nay roi xoa danh sach? Ban van co the xem card trong muc luu tru.'
-            : 'Archive all cards in this list and then delete the list? You can still view them in the archive.'
-        );
-        if (!ok) return;
-
         await listService.deleteList(list._id, {
           strategy: 'archive',
         });
@@ -335,6 +340,7 @@ export default function ListColumn({ list, allLists = [], onCardAdded, onCardCli
           <div
             className="modal-content"
             style={{
+              position: 'relative',
               maxWidth: 420,
               maxHeight: 'min(88vh, 640px)',
               padding: 20,
@@ -501,6 +507,12 @@ export default function ListColumn({ list, allLists = [], onCardAdded, onCardCli
                 )}
               </div>
             )}
+
+            {deleteError && (
+              <p style={{ marginTop: 10, marginBottom: 0, fontSize: 12, color: '#fca5a5' }}>
+                {deleteError}
+              </p>
+            )}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', marginTop: 12 }}>
               <button type="button" className="btn btn-danger btn-sm" onClick={handleDeleteList}>
                 {t('deleteList')}
@@ -517,6 +529,66 @@ export default function ListColumn({ list, allLists = [], onCardAdded, onCardCli
                 </button>
               </div>
             </div>
+
+            {showDeleteConfirm && (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  background: 'rgba(2,6,23,.72)',
+                  backdropFilter: 'blur(4px)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 18,
+                }}
+                onClick={() => setShowDeleteConfirm(false)}
+              >
+                <div
+                  style={{
+                    width: '100%',
+                    maxWidth: 360,
+                    borderRadius: 16,
+                    border: '1px solid rgba(255,255,255,.1)',
+                    background: 'rgba(15,23,42,.96)',
+                    padding: 18,
+                    boxShadow: '0 20px 48px rgba(0,0,0,.45)',
+                  }}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'white' }}>
+                    {lang === 'vi' ? 'Xoa danh sach nay?' : 'Delete this list?'}
+                  </p>
+                  <p style={{ margin: '8px 0 0', fontSize: 13, color: 'rgba(255,255,255,.62)', lineHeight: 1.5 }}>
+                    {cards.length === 0
+                      ? t('deleteListConfirm')
+                      : deleteMode === 'move'
+                        ? (lang === 'vi'
+                          ? 'Tat ca card se duoc chuyen sang danh sach dich, sau do danh sach nay se bi xoa.'
+                          : 'All cards will be moved to the destination list, then this list will be deleted.')
+                        : (lang === 'vi'
+                          ? 'Tat ca card trong danh sach nay se duoc luu tru truoc khi xoa danh sach.'
+                          : 'All cards in this list will be archived before the list is deleted.')}
+                  </p>
+                  <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => setShowDeleteConfirm(false)}
+                    >
+                      {lang === 'vi' ? 'Huy' : 'Cancel'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-danger btn-sm"
+                      onClick={confirmDeleteList}
+                    >
+                      {lang === 'vi' ? 'Xoa danh sach' : 'Delete list'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -7,6 +7,64 @@ const { asyncHandler, AppError } = require('../middleware/errorHandler');
 const notify = require('../utils/notifyHelper');
 const { cloudinary, upload } = require('../config/cloudinary');
 
+const createMentionKey = (value = '') =>
+  String(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+const extractMentionKeys = (content = '') => {
+  const regex = /@([a-z0-9][a-z0-9-]*)/gi;
+  const keys = new Set();
+  let match;
+  while ((match = regex.exec(content))) {
+    keys.add(match[1].toLowerCase());
+  }
+  return [...keys];
+};
+
+const findMentionRecipients = async (boardId, content) => {
+  const mentionKeys = extractMentionKeys(content);
+  if (!mentionKeys.length) return [];
+
+  const board = await Board.findById(boardId).select('workspace members');
+  if (!board) return [];
+
+  const workspace = await Workspace.findById(board.workspace)
+    .populate('owner', 'name email')
+    .populate('members.user', 'name email');
+  if (!workspace) return [];
+
+  const boardMemberIds = new Set((board.members || []).map((member) => member.user?.toString()));
+  const candidates = [workspace.owner, ...(workspace.members || []).map((member) => member.user)]
+    .filter(Boolean)
+    .filter((user) => {
+      const userId = user._id?.toString();
+      return workspace.owner?._id?.toString() === userId || boardMemberIds.size === 0 || boardMemberIds.has(userId);
+    });
+
+  const seen = new Set();
+  const matched = [];
+  candidates.forEach((user) => {
+    const userId = user._id?.toString();
+    if (!userId || seen.has(userId)) return;
+    seen.add(userId);
+
+    const keys = new Set([
+      createMentionKey(user.name),
+      createMentionKey(user.email?.split('@')[0]),
+    ].filter(Boolean));
+
+    if ([...keys].some((key) => mentionKeys.includes(key))) {
+      matched.push(user);
+    }
+  });
+
+  return matched;
+};
+
 const ensureBoardAccess = async (boardId, user) => {
   const board = await Board.findById(boardId).select('workspace');
   if (!board) throw new AppError('Board not found', 404);
@@ -374,6 +432,83 @@ exports.addComment = asyncHandler(async (req, res, next) => {
       metadata:   { cardId: id, cardTitle: card.title, boardId, comment: content.slice(0, 100) },
     });
   }
+  const mentionRecipients = await findMentionRecipients(card.board, content);
+  if (mentionRecipients.length > 0) {
+    await notify(io, {
+      actor: req.user._id,
+      recipients: mentionRecipients.map((user) => user._id),
+      type: 'comment_added',
+      title: req.user.name
+        ? `${req.user.name} mentioned you in a comment`
+        : 'You were mentioned in a comment',
+      message: content.slice(0, 120),
+      link: `/board/${boardId || card.board}`,
+      metadata: { cardId: id, cardTitle: card.title, boardId: boardId || card.board, mention: true },
+    });
+  }
+  res.status(200).json({ success: true, data: card.comments });
+});
+
+// @desc    Update comment on card
+// @route   PUT /api/cards/:id/comments/:commentId
+exports.updateComment = asyncHandler(async (req, res, next) => {
+  const { id, commentId } = req.params;
+  const { content, boardId } = req.body;
+  const card = await Card.findById(id);
+  if (!card) return next(new AppError('Card not found', 404));
+
+  const comment = card.comments.id(commentId);
+  if (!comment) return next(new AppError('Comment not found', 404));
+
+  const canEdit = req.user.role === 'admin' || comment.user.toString() === req.user._id.toString();
+  if (!canEdit) return next(new AppError('You do not have permission to edit this comment', 403));
+
+  await card.updateComment(commentId, content);
+  await card.populate('comments.user', 'name email avatar');
+
+  const mentionRecipients = await findMentionRecipients(card.board, content);
+  if (mentionRecipients.length > 0) {
+    const io = req.app.get('io');
+    await notify(io, {
+      actor: req.user._id,
+      recipients: mentionRecipients.map((user) => user._id),
+      type: 'comment_added',
+      title: req.user.name
+        ? `${req.user.name} mentioned you in an updated comment`
+        : 'You were mentioned in a comment',
+      message: content.slice(0, 120),
+      link: `/board/${boardId || card.board}`,
+      metadata: { cardId: id, cardTitle: card.title, boardId: boardId || card.board, mention: true, edited: true },
+    });
+  }
+
+  res.status(200).json({ success: true, data: card.comments });
+});
+
+// @desc    Delete comment from card
+// @route   DELETE /api/cards/:id/comments/:commentId
+exports.deleteComment = asyncHandler(async (req, res, next) => {
+  const { id, commentId } = req.params;
+  const card = await Card.findById(id);
+  if (!card) return next(new AppError('Card not found', 404));
+
+  const comment = card.comments.id(commentId);
+  if (!comment) return next(new AppError('Comment not found', 404));
+
+  const board = await Board.findById(card.board).select('workspace');
+  const workspace = board
+    ? await Workspace.findById(board.workspace).select('owner')
+    : null;
+  const isWorkspaceOwner = workspace?.owner?.toString() === req.user._id.toString();
+  const canDelete =
+    req.user.role === 'admin'
+    || isWorkspaceOwner
+    || comment.user.toString() === req.user._id.toString();
+  if (!canDelete) return next(new AppError('You do not have permission to delete this comment', 403));
+
+  await card.deleteComment(commentId);
+  await card.populate('comments.user', 'name email avatar');
+
   res.status(200).json({ success: true, data: card.comments });
 });
 
