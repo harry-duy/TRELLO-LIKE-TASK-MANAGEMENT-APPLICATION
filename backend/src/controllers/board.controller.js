@@ -144,8 +144,11 @@ exports.getBoard = asyncHandler(async (req, res, next) => {
     .populate('workspace')
     .populate({
       path: 'lists',
+      match: { isArchived: false },
       populate: {
         path: 'cards',
+        match: { isArchived: false },
+        options: { sort: { position: 1 } },
         populate: { path: 'assignees', select: 'name email avatar' },
       },
     });
@@ -198,8 +201,11 @@ exports.updateBoard = asyncHandler(async (req, res, next) => {
     .populate('workspace')
     .populate({
       path: 'lists',
+      match: { isArchived: false },
       populate: {
         path: 'cards',
+        match: { isArchived: false },
+        options: { sort: { position: 1 } },
         populate: { path: 'assignees', select: 'name email avatar' },
       },
     });

@@ -41,6 +41,11 @@ const cardService = {
     return response?.data ?? response;
   },
 
+  deleteChecklistItem: async (cardId, itemId) => {
+    const response = await apiClient.delete(`/cards/${cardId}/checklist/${itemId}`);
+    return response?.data ?? response;
+  },
+
   moveChecklistItem: async (cardId, itemId, targetCardId) => {
     const response = await apiClient.post(`/cards/${cardId}/checklist/${itemId}/move`, {
       targetCardId,
@@ -52,6 +57,18 @@ const cardService = {
     const response = await apiClient.get('/cards/search', {
       params: { boardId, ...filters },
     });
+    return response?.data ?? response;
+  },
+
+  getArchived: async (boardId) => {
+    const response = await apiClient.get('/cards/archived', {
+      params: { boardId },
+    });
+    return response?.data ?? response;
+  },
+
+  restore: async (cardId) => {
+    const response = await apiClient.put(`/cards/${cardId}/restore`);
     return response?.data ?? response;
   },
 };

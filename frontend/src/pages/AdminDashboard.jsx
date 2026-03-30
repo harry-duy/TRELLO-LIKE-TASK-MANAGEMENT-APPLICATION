@@ -139,7 +139,7 @@ export default function AdminDashboard() {
   });
 
   const handleDelete   = (userId, email) => {
-    if (!window.confirm(`Xoá tài khoản ${email}?`)) return;
+    if (!window.confirm(`Xoá tài khoản ${email}? Hành động này không thể hoàn tác.`)) return;
     deleteMutation.mutate(userId);
   };
   const handleAddMember = (workspaceId) => {
@@ -162,12 +162,12 @@ export default function AdminDashboard() {
   };
 
   const handleDeleteWorkspace = (workspaceId, name) => {
-    if (!window.confirm(`Xoá workspace ${name}? Toàn bộ board bên trong cũng sẽ bị xoá.`)) return;
+    if (!window.confirm(`Xoá workspace ${name}? Toàn bộ board và dữ liệu bên trong cũng sẽ bị xoá, không thể hoàn tác.`)) return;
     deleteWorkspaceMutation.mutate(workspaceId);
   };
 
   const handleDeleteBoard = (boardId, name) => {
-    if (!window.confirm(`Xoá board ${name}?`)) return;
+    if (!window.confirm(`Xoá board ${name}? Hành động này không thể hoàn tác.`)) return;
     deleteBoardMutation.mutate(boardId);
   };
 

@@ -126,6 +126,7 @@ exports.moveCard = asyncHandler(async (req, res, next) => {
   const { listId, position, boardId } = req.body;
   const card = await Card.findById(id);
   if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
   const workspaceId = await getBoardWorkspaceId(card.board);
   const oldListId = card.list;
   await card.moveToList(listId, position);
@@ -394,6 +395,15 @@ exports.toggleChecklistItem = asyncHandler(async (req, res, next) => {
   res.status(200).json({ success: true, data: card.checklist });
 });
 
+// @desc    Delete checklist item
+// @route   DELETE /api/cards/:id/checklist/:itemId
+exports.deleteChecklistItem = asyncHandler(async (req, res, next) => {
+  const card = await Card.findById(req.params.id);
+  if (!card) return next(new AppError('Card not found', 404));
+  await card.deleteChecklistItem(req.params.itemId);
+  res.status(200).json({ success: true, data: card.checklist });
+});
+
 // @desc    Move checklist item to another card
 // @route   POST /api/cards/:id/checklist/:itemId/move
 exports.moveChecklistItem = asyncHandler(async (req, res, next) => {
@@ -436,11 +446,51 @@ exports.moveChecklistItem = asyncHandler(async (req, res, next) => {
   });
 });
 
+// @desc    Get archived cards for a board
+// @route   GET /api/cards/archived
+exports.getArchivedCards = asyncHandler(async (req, res, next) => {
+  const { boardId } = req.query;
+  if (!boardId) return next(new AppError('boardId is required', 400));
+  await ensureBoardAccess(boardId, req.user);
+
+  const cards = await Card.find({ board: boardId, isArchived: true })
+    .populate('list', 'name')
+    .populate('assignees', 'name email avatar')
+    .sort({ updatedAt: -1 });
+
+  res.status(200).json({ success: true, data: cards });
+});
+
+// @desc    Restore archived card to its original list
+// @route   PUT /api/cards/:id/restore
+exports.restoreCard = asyncHandler(async (req, res, next) => {
+  const card = await Card.findById(req.params.id);
+  if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
+  if (!card.isArchived) return next(new AppError('Card is not archived', 400));
+
+  card.isArchived = false;
+  await card.save();
+
+  await Activity.log({
+    actor: req.user._id,
+    action: 'card_restored',
+    target: card._id,
+    targetType: 'Card',
+    board: card.board,
+    workspace: await getBoardWorkspaceId(card.board),
+  });
+
+  res.status(200).json({ success: true, data: card });
+});
+
 // @desc    Delete card
 // @route   DELETE /api/cards/:id
 exports.deleteCard = asyncHandler(async (req, res, next) => {
   const card = await Card.findById(req.params.id);
   if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
+  if (!card.isArchived) return next(new AppError('Card must be archived before it can be deleted', 400));
   const workspaceId = await getBoardWorkspaceId(card.board);
   await Activity.log({
     actor: req.user._id,
@@ -470,6 +520,7 @@ exports.addAttachment = [
   asyncHandler(async (req, res, next) => {
     const card = await Card.findById(req.params.id);
     if (!card) return next(new AppError('Card not found', 404));
+    await ensureBoardAccess(card.board, req.user);
     if (!req.file) return next(new AppError('No file uploaded', 400));
 
     const attachment = {
@@ -503,6 +554,7 @@ exports.deleteAttachment = asyncHandler(async (req, res, next) => {
   const { id, attachmentId } = req.params;
   const card = await Card.findById(id);
   if (!card) return next(new AppError('Card not found', 404));
+  await ensureBoardAccess(card.board, req.user);
 
   const attachment = card.attachments.id(attachmentId);
   if (!attachment) return next(new AppError('Attachment not found', 404));

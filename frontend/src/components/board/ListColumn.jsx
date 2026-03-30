@@ -4,14 +4,20 @@ import { CSS } from '@dnd-kit/utilities';
 import cardService from '@services/cardService';
 import listService from '@services/listService';
 import { useTranslation } from '@hooks/useTranslation';
+import { useUiStore } from '@store/uiStore';
 import { SortableCard } from './SortableCard';
 
-export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdated, columnWidth }) {
+export default function ListColumn({ list, allLists = [], onCardAdded, onCardClick, onListUpdated, columnWidth }) {
   const { t } = useTranslation();
+  const lang = useUiStore((state) => state.language) || 'vi';
   const [isAdding, setIsAdding] = useState(false);
   const [title, setTitle] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(list.name);
+  const [deleteMode, setDeleteMode] = useState('move');
+  const [targetListId, setTargetListId] = useState('');
+  const [newListName, setNewListName] = useState('');
+  const [isCreatingTargetList, setIsCreatingTargetList] = useState(false);
 
   const {
     attributes,
@@ -24,6 +30,19 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
   } = useSortable({ id: list._id, data: { type: 'list' } });
 
   const cards = useMemo(() => (Array.isArray(list.cards) ? list.cards : []), [list.cards]);
+  const otherLists = useMemo(
+    () => (Array.isArray(allLists) ? allLists.filter((item) => item._id !== list._id) : []),
+    [allLists, list._id]
+  );
+
+  const resetEditState = () => {
+    setIsEditing(false);
+    setName(list.name);
+    setDeleteMode('move');
+    setTargetListId('');
+    setNewListName('');
+    setIsCreatingTargetList(false);
+  };
 
   const handleAddCard = async () => {
     if (!title.trim()) return;
@@ -53,14 +72,61 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
   };
 
   const handleDeleteList = async () => {
-    const ok = window.confirm(t('deleteListConfirm'));
-    if (!ok) return;
     try {
-      await listService.deleteList(list._id);
-      setIsEditing(false);
+      if (cards.length === 0) {
+        const ok = window.confirm(t('deleteListConfirm'));
+        if (!ok) return;
+        await listService.deleteList(list._id);
+      } else if (deleteMode === 'move') {
+        if (!targetListId) {
+          window.alert(lang === 'vi' ? 'Hay chon danh sach dich de di chuyen card.' : 'Please choose a destination list first.');
+          return;
+        }
+
+        await listService.deleteList(list._id, {
+          strategy: 'move',
+          targetListId,
+        });
+      } else {
+        const ok = window.confirm(
+          lang === 'vi'
+            ? 'Luu tru tat ca card trong danh sach nay roi xoa danh sach? Ban van co the xem card trong muc luu tru.'
+            : 'Archive all cards in this list and then delete the list? You can still view them in the archive.'
+        );
+        if (!ok) return;
+
+        await listService.deleteList(list._id, {
+          strategy: 'archive',
+        });
+      }
+
+      resetEditState();
       onListUpdated?.();
     } catch (err) {
       console.error(t('deleteListError'), err);
+    }
+  };
+
+  const handleCreateTargetList = async () => {
+    const trimmedName = newListName.trim();
+    if (!trimmedName || isCreatingTargetList) return;
+
+    try {
+      setIsCreatingTargetList(true);
+      const response = await listService.createList({
+        name: trimmedName,
+        boardId: list.board,
+      });
+      const createdList = response?.data ?? response;
+      if (createdList?._id) {
+        setTargetListId(createdList._id);
+        setNewListName('');
+        onListUpdated?.();
+      }
+    } catch (err) {
+      console.error(t('createListError'), err);
+    } finally {
+      setIsCreatingTargetList(false);
     }
   };
 
@@ -264,14 +330,20 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
       {isEditing && (
         <div
           className="modal-overlay"
-          onClick={() => {
-            setIsEditing(false);
-            setName(list.name);
-          }}
+          onClick={resetEditState}
         >
           <div
             className="modal-content"
-            style={{ maxWidth: 360, padding: 20 }}
+            style={{
+              maxWidth: 420,
+              maxHeight: 'min(88vh, 640px)',
+              padding: 20,
+              background: 'linear-gradient(180deg, rgba(12,18,32,.98), rgba(16,24,40,.98))',
+              border: '1px solid rgba(255,255,255,.08)',
+              color: 'white',
+              boxShadow: '0 24px 54px rgba(0,0,0,.45)',
+              overflowY: 'auto',
+            }}
             onClick={(e) => e.stopPropagation()}
           >
             <h3
@@ -279,7 +351,7 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
                 fontSize: 16,
                 fontWeight: 600,
                 marginBottom: 16,
-                color: 'var(--color-text-heading)',
+                color: 'rgba(255,255,255,.96)',
               }}
             >
               {t('renameList')}
@@ -291,12 +363,144 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
               onKeyDown={(e) => {
                 if (e.key === 'Enter') handleUpdateList();
                 if (e.key === 'Escape') {
-                  setIsEditing(false);
-                  setName(list.name);
+                  resetEditState();
                 }
               }}
               autoFocus
+              style={{
+                background: 'rgba(2,6,23,.82)',
+                border: '1px solid rgba(255,255,255,.12)',
+                color: 'white',
+              }}
             />
+            {cards.length > 0 && (
+              <div
+                style={{
+                  marginTop: 14,
+                  padding: 12,
+                  borderRadius: 12,
+                  background: 'rgba(255,255,255,.05)',
+                  border: '1px solid rgba(255,255,255,.1)',
+                }}
+              >
+                <p style={{ margin: '0 0 10px', fontSize: 12, color: 'rgba(255,255,255,.72)', lineHeight: 1.5 }}>
+                  {lang === 'vi'
+                    ? `Danh sach nay dang co ${cards.length} card. Hay chon cach xu ly truoc khi xoa.`
+                    : `This list still contains ${cards.length} cards. Choose how to handle them before deleting.`}
+                </p>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setDeleteMode('move')}
+                    style={deleteMode === 'move'
+                      ? {
+                        borderColor: 'rgba(59,130,246,.55)',
+                        background: 'rgba(37,99,235,.2)',
+                        color: '#bfdbfe',
+                      }
+                      : {
+                        background: 'rgba(255,255,255,.08)',
+                        borderColor: 'rgba(255,255,255,.08)',
+                        color: 'rgba(255,255,255,.82)',
+                      }}
+                  >
+                    {lang === 'vi' ? 'Di chuyen card' : 'Move cards'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setDeleteMode('archive')}
+                    style={deleteMode === 'archive'
+                      ? {
+                        borderColor: 'rgba(245,158,11,.55)',
+                        background: 'rgba(245,158,11,.18)',
+                        color: '#fde68a',
+                      }
+                      : {
+                        background: 'rgba(255,255,255,.08)',
+                        borderColor: 'rgba(255,255,255,.08)',
+                        color: 'rgba(255,255,255,.82)',
+                      }}
+                  >
+                    {lang === 'vi' ? 'Luu tru card' : 'Archive cards'}
+                  </button>
+                </div>
+                {deleteMode === 'move' ? (
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    <select
+                      className="input"
+                      value={targetListId}
+                      onChange={(event) => setTargetListId(event.target.value)}
+                      style={{
+                        width: '100%',
+                        background: 'rgba(2,6,23,.88)',
+                        border: '1px solid rgba(255,255,255,.12)',
+                        color: 'white',
+                      }}
+                    >
+                      <option value="" style={{ background: '#0f172a', color: 'white' }}>
+                        {lang === 'vi' ? 'Chon danh sach dich...' : 'Choose a destination list...'}
+                      </option>
+                      {otherLists.map((item) => (
+                        <option key={item._id} value={item._id} style={{ background: '#0f172a', color: 'white' }}>
+                          {item.name}
+                        </option>
+                      ))}
+                    </select>
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      <p style={{ margin: 0, fontSize: 12, color: 'rgba(255,255,255,.55)' }}>
+                        {lang === 'vi'
+                          ? 'Hoac tao danh sach moi ngay tai day roi chuyen card sang do.'
+                          : 'Or create a new list here and move the cards into it.'}
+                      </p>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <input
+                          className="input"
+                          value={newListName}
+                          onChange={(event) => setNewListName(event.target.value)}
+                          placeholder={lang === 'vi' ? 'Ten danh sach moi...' : 'New list name...'}
+                          style={{
+                            flex: 1,
+                            background: 'rgba(2,6,23,.88)',
+                            border: '1px solid rgba(255,255,255,.12)',
+                            color: 'white',
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault();
+                              handleCreateTargetList();
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={handleCreateTargetList}
+                          disabled={isCreatingTargetList || !newListName.trim()}
+                          style={{
+                            background: 'rgba(37,99,235,.18)',
+                            borderColor: 'rgba(59,130,246,.35)',
+                            color: '#bfdbfe',
+                            opacity: isCreatingTargetList || !newListName.trim() ? 0.6 : 1,
+                          }}
+                        >
+                          {isCreatingTargetList
+                            ? (lang === 'vi' ? 'Dang tao...' : 'Creating...')
+                            : (lang === 'vi' ? 'Tao list moi' : 'Create list')}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p style={{ margin: 0, fontSize: 12, color: 'rgba(255,255,255,.55)', lineHeight: 1.5 }}>
+                    {lang === 'vi'
+                      ? 'Tat ca card se duoc luu tru, sau do danh sach nay moi bi xoa.'
+                      : 'All cards will be archived first, then this list will be deleted.'}
+                  </p>
+                )}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', marginTop: 12 }}>
               <button type="button" className="btn btn-danger btn-sm" onClick={handleDeleteList}>
                 {t('deleteList')}
@@ -304,10 +508,7 @@ export default function ListColumn({ list, onCardAdded, onCardClick, onListUpdat
               <div style={{ display: 'flex', gap: 8 }}>
                 <button
                   className="btn btn-secondary btn-sm"
-                  onClick={() => {
-                    setIsEditing(false);
-                    setName(list.name);
-                  }}
+                  onClick={resetEditState}
                 >
                   {t('cancel')}
                 </button>

@@ -7,8 +7,10 @@ const { validate, cardSchemas } = require('../middleware/validation.middleware')
 router.use(protect);
 
 router.get('/search',    cardController.searchCards);
+router.get('/archived',  cardController.getArchivedCards);
 router.post('/',         validate(cardSchemas.create), cardController.createCard);
 router.put('/:id/move',  validate(cardSchemas.move),   cardController.moveCard);
+router.put('/:id/restore', cardController.restoreCard);
 router.get('/:id',       cardController.getCardDetails);
 router.put('/:id',       cardController.updateCard);
 router.delete('/:id',    cardController.deleteCard);
@@ -19,6 +21,7 @@ router.post('/:id/comments', cardController.addComment);
 // Checklist
 router.post('/:id/checklist',         validate(cardSchemas.addChecklistItem), cardController.addChecklistItem);
 router.patch('/:id/checklist/:itemId',                                         cardController.toggleChecklistItem);
+router.delete('/:id/checklist/:itemId',                                        cardController.deleteChecklistItem);
 router.post('/:id/checklist/:itemId/move', validate(cardSchemas.moveChecklistItem), cardController.moveChecklistItem);
 
 // ── Attachments (NEW) ──────────────────────────────────────────────────

@@ -112,7 +112,11 @@ export default function NotificationBell() {
   };
 
   const clearAll = async () => {
-    if (!window.confirm(lang === 'vi' ? 'Xoá tất cả thông báo?' : 'Clear all notifications?')) return;
+    if (!window.confirm(
+      lang === 'vi'
+        ? 'Xoá tất cả thông báo? Hành động này không thể hoàn tác.'
+        : 'Clear all notifications? This action cannot be undone.'
+    )) return;
     await notificationService.clearAll();
     setNotifs([]);
     setUnread(0);

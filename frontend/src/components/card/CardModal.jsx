@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import cardService  from '@services/cardService';
 import boardService from '@services/boardService';
+import aiService    from '@services/aiService';
 import { useUiStore } from '@store/uiStore';
 import toast from 'react-hot-toast';
 import { useTranslation } from '@hooks/useTranslation';
@@ -23,6 +24,8 @@ export default function CardModal({ cardId, boardId, onClose }) {
   const [isEditing,       setIsEditing]       = useState(false);
   const [form,            setForm]            = useState({ title: '', description: '', dueDate: '' });
   const [checklistText,   setChecklistText]   = useState('');
+  const [aiChecklist,     setAiChecklist]     = useState([]);
+  const [commentText,     setCommentText]     = useState('');
   const [moveTargets,     setMoveTargets]     = useState({});
   const [wsMembers,       setWsMembers]       = useState([]);
   const [loadingMembers,  setLoadingMembers]  = useState(false);
@@ -117,7 +120,10 @@ export default function CardModal({ cardId, boardId, onClose }) {
 
   const commentMutation = useMutation({
     mutationFn: (content) => cardService.addComment(cardId, { content, boardId }),
-    onSuccess:  () => queryClient.invalidateQueries(['card', cardId]),
+    onSuccess:  () => {
+      queryClient.invalidateQueries(['card', cardId]);
+      setCommentText('');
+    },
   });
 
   const checklistMutation = useMutation({
@@ -128,6 +134,12 @@ export default function CardModal({ cardId, boardId, onClose }) {
   const toggleChecklistMutation = useMutation({
     mutationFn: (itemId) => cardService.toggleChecklistItem(cardId, itemId),
     onSuccess:  () => queryClient.invalidateQueries(['card', cardId]),
+  });
+
+  const deleteChecklistMutation = useMutation({
+    mutationFn: (itemId) => cardService.deleteChecklistItem(cardId, itemId),
+    onSuccess: () => queryClient.invalidateQueries(['card', cardId]),
+    onError: (err) => toast.error(err?.message || (lang === 'vi' ? 'Khong the xoa checklist item' : 'Could not delete checklist item')),
   });
 
   const moveChecklistMutation = useMutation({
@@ -142,15 +154,56 @@ export default function CardModal({ cardId, boardId, onClose }) {
     onError: err => toast.error(err?.message || t('moveChecklistItemError')),
   });
 
+  const aiChecklistMutation = useMutation({
+    mutationFn: () => aiService.getChecklistSuggestions({
+      title: form.title,
+      description: form.description,
+      language: lang,
+    }),
+    onSuccess: (res) => {
+      const suggestions = res?.checklist || [];
+      setAiChecklist(suggestions);
+      toast.success(t('aiSuggestedCount', { count: suggestions.length || 0 }));
+    },
+    onError: (err) => toast.error(err?.message || t('aiChecklistFetchError')),
+  });
+
   const deleteMutation = useMutation({
     mutationFn: () => cardService.delete(cardId),
-    onSuccess:  () => { queryClient.invalidateQueries(['board', boardId]); onClose(); },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['board', boardId]);
+      queryClient.invalidateQueries(['archivedCards', boardId]);
+      onClose();
+    },
+    onError: (error) => {
+      toast.error(
+        error?.message || (lang === 'vi'
+          ? 'Hay luu tru card truoc khi xoa vinh vien'
+          : 'Archive the card before permanently deleting it')
+      );
+    },
   });
 
   const archiveMutation = useMutation({
     mutationFn: () => cardService.update(cardId, { isArchived: true }),
     onSuccess:  () => { queryClient.invalidateQueries(['board', boardId]); toast.success(lang === 'vi' ? 'Đã lưu trữ card' : 'Card archived'); onClose(); },
   });
+
+  const handleArchive = () => {
+    if (!window.confirm(
+      lang === 'vi'
+        ? 'Luu tru card nay? Ban co the khoi phuc lai tu muc luu tru.'
+        : 'Archive this card? You can restore it later from the archive.'
+    )) return;
+
+    archiveMutation.mutate();
+  };
+
+  const handleSubmitComment = () => {
+    const trimmed = commentText.trim();
+    if (!trimmed || commentMutation.isPending) return;
+    commentMutation.mutate(trimmed);
+  };
 
   const handleLabelsUpdate = async (newLabels) => {
     await cardService.update(cardId, { labels: newLabels });
@@ -180,7 +233,11 @@ export default function CardModal({ cardId, boardId, onClose }) {
   };
 
   const handleDeleteAttachment = async (attachmentId) => {
-    if (!window.confirm(lang === 'vi' ? 'Xoá file này?' : 'Delete this attachment?')) return;
+    if (!window.confirm(
+      lang === 'vi'
+        ? 'Xoá file đính kèm này? Hành động này không thể hoàn tác.'
+        : 'Delete this attachment? This action cannot be undone.'
+    )) return;
     try {
       await apiClient.delete(`/cards/${cardId}/attachments/${attachmentId}`);
       queryClient.invalidateQueries(['card', cardId]);
@@ -432,10 +489,16 @@ export default function CardModal({ cardId, boardId, onClose }) {
                   <button onClick={() => setIsEditing(false)} className="btn btn-secondary btn-sm w-full">{t('cancel')}</button>
                 </>
               )}
-              <button onClick={() => archiveMutation.mutate()} className="btn btn-secondary btn-sm w-full text-left" style={{ color: '#fbbf24' }}>
+              <button onClick={handleArchive} className="btn btn-secondary btn-sm w-full text-left" style={{ color: '#fbbf24' }}>
                 📦 {lang === 'vi' ? 'Lưu trữ' : 'Archive'}
               </button>
-              <button onClick={() => { if (window.confirm(lang === 'vi' ? 'Xoá card này?' : 'Delete this card?')) deleteMutation.mutate(); }}
+              <button onClick={() => {
+                if (window.confirm(
+                  lang === 'vi'
+                    ? 'Xoá vĩnh viễn card này? Card phải được lưu trữ trước và hành động này không thể hoàn tác.'
+                    : 'Permanently delete this card? The card must be archived first, and this action cannot be undone.'
+                )) deleteMutation.mutate();
+              }}
                 className="btn btn-danger btn-sm w-full text-left">
                 🗑 {t('deleteCard')}
               </button>
@@ -520,30 +583,128 @@ export default function CardModal({ cardId, boardId, onClose }) {
               <div style={{ height: '100%', width: `${progress}%`, borderRadius: 99, background: progress === 100 ? '#22c55e' : '#3b82f6', transition: 'width .3s' }} />
             </div>
           )}
+          <div className="flex flex-wrap gap-2 mb-3">
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => aiChecklistMutation.mutate()}
+              disabled={aiChecklistMutation.isPending || !form.title.trim()}
+            >
+              {aiChecklistMutation.isPending ? t('aiSuggestingChecklist') : t('aiSuggestChecklist')}
+            </button>
+            {aiChecklist.length > 0 && (
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={async () => {
+                  try {
+                    for (const item of aiChecklist.filter((value) => value.trim())) {
+                      // Keep existing addChecklistItem flow for each suggestion.
+                      await cardService.addChecklistItem(cardId, item);
+                    }
+                    queryClient.invalidateQueries(['card', cardId]);
+                    setAiChecklist([]);
+                    toast.success(t('addedAiChecklistSuccess'));
+                  } catch (err) {
+                    toast.error(err?.message || t('addAiChecklistError'));
+                  }
+                }}
+              >
+                {t('addAllSuggestions')}
+              </button>
+            )}
+          </div>
+          {aiChecklist.length > 0 && (
+            <div className="mb-4 rounded-xl border border-white/10 bg-white/5 p-3 space-y-2">
+              <div className="text-xs text-emerald-100/60 mb-2">
+                {lang === 'vi' ? 'Chinh sua truoc khi them:' : 'Edit before adding:'}
+              </div>
+              {aiChecklist.map((item, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <span className="text-emerald-50/50">-</span>
+                  <input
+                    className="input min-w-0 flex-1 py-1 text-sm bg-black/20 border-transparent"
+                    value={item}
+                    onChange={(e) => {
+                      const next = [...aiChecklist];
+                      next[idx] = e.target.value;
+                      setAiChecklist(next);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="text-red-400 px-2"
+                    onClick={() => setAiChecklist(aiChecklist.filter((_, i) => i !== idx))}
+                  >
+                    x
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="space-y-2 mb-4">
             {checklist.map(item => {
               const isMoving = moveChecklistMutation.isPending && moveChecklistMutation.variables?.itemId === item._id;
+              const isDeleting = deleteChecklistMutation.isPending && deleteChecklistMutation.variables === item._id;
               return (
                 <div key={item._id} className="rounded-xl bg-white/5 p-3">
-                  <label className="flex items-center gap-3 text-emerald-50/80 cursor-pointer">
-                    <input type="checkbox" checked={item.completed}
-                      onChange={() => toggleChecklistMutation.mutate(item._id)} />
-                    <span className={`min-w-0 flex-1 break-words text-sm ${item.completed ? 'line-through text-emerald-50/40' : ''}`}>
-                      {item.text}
-                    </span>
-                  </label>
+                  <div className="flex items-start gap-3">
+                    <label className="flex min-w-0 flex-1 items-center gap-3 text-emerald-50/80 cursor-pointer">
+                      <input type="checkbox" checked={item.completed}
+                        onChange={() => toggleChecklistMutation.mutate(item._id)} />
+                      <span className={`min-w-0 flex-1 break-words text-sm ${item.completed ? 'line-through text-emerald-50/40' : ''}`}>
+                        {item.text}
+                      </span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!window.confirm(
+                          lang === 'vi'
+                            ? 'Xoá checklist item này? Hành động này không thể hoàn tác.'
+                            : 'Delete this checklist item? This action cannot be undone.'
+                        )) return;
+                        deleteChecklistMutation.mutate(item._id);
+                      }}
+                      disabled={isDeleting}
+                      style={{
+                        border: 'none',
+                        background: 'rgba(239,68,68,.14)',
+                        color: '#f87171',
+                        borderRadius: 8,
+                        padding: '4px 8px',
+                        cursor: isDeleting ? 'wait' : 'pointer',
+                        fontSize: 12,
+                        flexShrink: 0,
+                      }}
+                      title={lang === 'vi' ? 'Xoa checklist item' : 'Delete checklist item'}
+                    >
+                      {isDeleting ? '...' : 'x'}
+                    </button>
+                  </div>
                   {destinationCards.length > 0 && (
                     <div className="mt-2 flex gap-2 flex-wrap">
-                      <select className="input py-1 min-w-0 flex-1 text-xs"
+                      <select
+                        className="input py-1 min-w-0 flex-1 text-xs"
+                        style={{ color: 'white', background: 'rgba(2, 6, 23, 0.88)' }}
                         value={moveTargets[item._id] || ''}
-                        onChange={e => setMoveTargets(p => ({ ...p, [item._id]: e.target.value }))}>
-                        <option value="">{t('moveToCardPlaceholder')}</option>
-                        {destinationCards.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                        onChange={e => setMoveTargets(p => ({ ...p, [item._id]: e.target.value }))}
+                      >
+                        <option value="" style={{ color: 'white', background: '#0f172a' }}>
+                          {lang === 'vi' ? 'Chon card nhan checklist...' : 'Choose a destination card...'}
+                        </option>
+                        {destinationCards.map(c => (
+                          <option key={c.value} value={c.value} style={{ color: 'white', background: '#0f172a' }}>
+                            {c.label}
+                          </option>
+                        ))}
                       </select>
                       <button type="button" className="btn btn-secondary btn-sm"
                         disabled={!moveTargets[item._id] || isMoving}
                         onClick={() => moveChecklistMutation.mutate({ itemId: item._id, targetCardId: moveTargets[item._id] })}>
-                        {isMoving ? t('movingChecklistItem') : t('moveChecklistItem')}
+                        {isMoving
+                          ? t('movingChecklistItem')
+                          : (lang === 'vi' ? 'Chuyen muc nay sang card' : 'Move this item to card')}
                       </button>
                     </div>
                   )}
@@ -579,14 +740,19 @@ export default function CardModal({ cardId, boardId, onClose }) {
               </div>
             ))}
           </div>
-          <textarea className="input w-full" placeholder={t('writeComment')} rows={2}
+          <textarea
+            className="input w-full"
+            placeholder={t('writeComment')}
+            rows={2}
+            value={commentText}
+            onChange={e => setCommentText(e.target.value)}
             onKeyDown={e => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                commentMutation.mutate(e.target.value);
-                e.target.value = '';
+                handleSubmitComment();
               }
-            }} />
+            }}
+          />
         </section>
       </div>
     </div>

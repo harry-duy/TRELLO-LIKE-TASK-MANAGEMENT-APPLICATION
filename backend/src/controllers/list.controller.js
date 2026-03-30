@@ -61,9 +61,43 @@ exports.deleteList = asyncHandler(async (req, res, next) => {
 
   const boardId = list.board;
 
-  // Manually cascade delete cards (avoid deprecated remove in newer Mongoose)
   const Card = require('../models/card.model');
-  await Card.deleteMany({ list: list._id });
+  const cardsInList = await Card.find({ list: list._id })
+    .select('_id isArchived position')
+    .sort({ position: 1 });
+  const { strategy, targetListId } = req.body || {};
+
+  if (cardsInList.length > 0) {
+    if (strategy === 'move') {
+      if (!targetListId) {
+        return next(new AppError('Thiáº¿u danh sÃ¡ch Ä‘Ã­ch Ä‘á»ƒ di chuyá»ƒn card', 400));
+      }
+
+      if (String(targetListId) === String(list._id)) {
+        return next(new AppError('KhÃ´ng thá»ƒ di chuyá»ƒn card sang chÃ­nh danh sÃ¡ch nÃ y', 400));
+      }
+
+      const targetList = await List.findOne({ _id: targetListId, board: boardId });
+      if (!targetList) {
+        return next(new AppError('KhÃ´ng tÃ¬m tháº¥y danh sÃ¡ch Ä‘Ã­ch', 404));
+      }
+
+      await Card.updateMany(
+        { list: list._id },
+        { $set: { list: targetList._id } }
+      );
+
+      await Card.reorderCards(targetList._id);
+    } else if (strategy === 'archive') {
+      await Card.updateMany(
+        { list: list._id, isArchived: false },
+        { $set: { isArchived: true } }
+      );
+    } else {
+      return next(new AppError('Danh sÃ¡ch nÃ y cÃ²n card. HÃ£y di chuyá»ƒn hoáº·c lÆ°u trá»¯ card trÆ°á»›c khi xÃ³a.', 400));
+    }
+  }
+
   await List.deleteOne({ _id: list._id });
 
   await Activity.log({
@@ -72,6 +106,11 @@ exports.deleteList = asyncHandler(async (req, res, next) => {
     target: id,
     targetType: 'List',
     board: boardId,
+    metadata: {
+      strategy: strategy || 'empty',
+      movedToList: targetListId || null,
+      cardCount: cardsInList.length,
+    },
   });
 
   res.status(200).json({ success: true, data: { id } });

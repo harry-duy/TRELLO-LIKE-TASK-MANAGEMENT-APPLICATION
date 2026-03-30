@@ -74,6 +74,7 @@ const cardSchema = new mongoose.Schema(
         name: String,
         url: String,
         type: String, // image, pdf, etc.
+        publicId: String,
         uploadedBy: {
           type: mongoose.Schema.Types.ObjectId,
           ref: 'User',
@@ -210,6 +211,15 @@ cardSchema.methods.toggleChecklistItem = function (itemId) {
   
   item.completed = !item.completed;
   item.completedAt = item.completed ? new Date() : null;
+  return this.save();
+};
+
+// Instance method: Delete checklist item
+cardSchema.methods.deleteChecklistItem = function (itemId) {
+  const item = this.checklist.id(itemId);
+  if (!item) throw new Error('Checklist item not found');
+
+  this.checklist.pull({ _id: itemId });
   return this.save();
 };
 

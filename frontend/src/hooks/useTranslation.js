@@ -112,7 +112,7 @@ const translations = {
     listLabel: 'Danh sách',
     editList: 'Sửa danh sách',
     deleteList: 'Xoá danh sách',
-    deleteListConfirm: 'Xoá danh sách này? Thẻ bên trong sẽ bị xoá.',
+    deleteListConfirm: 'Xoá danh sách này? Tất cả thẻ bên trong cũng sẽ bị xoá và không thể hoàn tác.',
     noCardsYet: 'Chưa có card nào',
     cardTitlePlaceholder: 'Tiêu đề card...',
     addCard: 'Thêm card',
@@ -290,7 +290,7 @@ const translations = {
     editList: 'Edit list',
     deleteList: 'Delete list',
     deleteListConfirm:
-      'Delete this list? Cards inside it will also be deleted.',
+      'Delete this list? All cards inside it will also be deleted, and this action cannot be undone.',
     noCardsYet: 'No cards yet',
     cardTitlePlaceholder: 'Card title...',
     addCard: 'Add card',
